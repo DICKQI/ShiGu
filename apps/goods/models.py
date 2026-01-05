@@ -28,6 +28,33 @@ class IP(models.Model):
         return self.name
 
 
+class IPKeyword(models.Model):
+    """
+    IP 多关键词 / 别名表，例如：星铁、崩铁、HSR 等。
+    """
+
+    ip = models.ForeignKey(
+        IP,
+        on_delete=models.CASCADE,
+        related_name="keywords",
+        verbose_name="所属作品",
+    )
+    value = models.CharField(
+        max_length=50,
+        db_index=True,
+        verbose_name="关键词",
+        help_text="IP 的别名或搜索关键字，例如：星铁、崩铁、HSR",
+    )
+
+    class Meta:
+        verbose_name = "IP关键词"
+        verbose_name_plural = "IP关键词"
+        unique_together = ("ip", "value")
+
+    def __str__(self):
+        return f"{self.ip.name} - {self.value}"
+
+
 class Character(models.Model):
     """
     角色表，例如：流萤

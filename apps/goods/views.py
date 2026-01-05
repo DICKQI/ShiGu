@@ -41,8 +41,15 @@ class GoodsViewSet(viewsets.ModelViewSet):
         "location": ["exact"],
     }
 
-    # 轻量搜索：对 name 走索引（已在模型上 db_index=True）
-    search_fields = ("name",)
+    # 轻量搜索：
+    # - 对 Goods.name 走索引（已在模型上 db_index=True）
+    # - 同时支持按 IP 名称 / 简称 / 多关键词(IPKeyword) 搜索
+    search_fields = (
+        "name",
+        "ip__name",
+        "ip__short_name",
+        "ip__keywords__value",
+    )
 
     # 限流：专门给检索接口一个 scope，具体速率在 settings.REST_FRAMEWORK.THROTTLE_RATES 中配置
     throttle_classes = [ScopedRateThrottle]

@@ -1,13 +1,20 @@
 from django.contrib import admin
 
-from .models import Category, Character, Goods, GuziImage, IP
+from .models import Category, Character, Goods, GuziImage, IP, IPKeyword
+
+
+
+class IPKeywordInline(admin.TabularInline):
+    model = IPKeyword
+    extra = 1
 
 
 @admin.register(IP)
 class IPAdmin(admin.ModelAdmin):
     list_display = ("id", "name", "short_name")
-    search_fields = ("name", "short_name")
+    search_fields = ("name", "short_name", "keywords__value")
     ordering = ("name",)
+    inlines = [IPKeywordInline]
 
 
 @admin.register(Character)
