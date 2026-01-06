@@ -113,6 +113,24 @@ class CharacterSimpleSerializer(serializers.ModelSerializer):
         model = Character
         fields = ("id", "name", "ip", "ip_id", "avatar")
 
+    def create(self, validated_data):
+        """创建角色时自动压缩头像"""
+        avatar = validated_data.get('avatar')
+        if avatar:
+            compressed_image = compress_image(avatar, max_size_kb=300)
+            if compressed_image:
+                validated_data['avatar'] = compressed_image
+        return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        """更新角色时自动压缩头像"""
+        avatar = validated_data.get('avatar')
+        if avatar:
+            compressed_image = compress_image(avatar, max_size_kb=300)
+            if compressed_image:
+                validated_data['avatar'] = compressed_image
+        return super().update(instance, validated_data)
+
 
 class CategorySimpleSerializer(serializers.ModelSerializer):
     class Meta:
