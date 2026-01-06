@@ -58,6 +58,7 @@
 | `ip`     | FK -> `IP`          | 所属作品                                  |
 | `name`   | Char(100), 索引     | 角色名，如：`流萤`                        |
 | `avatar` | Image(URL，可空)    | 角色头像 URL，用于前端列表/角色选择展示  |
+| `gender` | Char(10)            | 角色性别：`male`(男) / `female`(女) / `other`(其他)，默认 `female` |
 
 > 约束：同一 `ip` 下 `name` 唯一。
 
@@ -835,7 +836,8 @@ main_photo: <file>
       "id": 1,
       "name": "崩坏：星穹铁道"
     },
-    "avatar": null
+    "avatar": null,
+    "gender": "female"
   },
   {
     "id": 6,
@@ -844,7 +846,8 @@ main_photo: <file>
       "id": 1,
       "name": "崩坏：星穹铁道"
     },
-    "avatar": "https://cdn.example.com/characters/huohuo.jpg"
+    "avatar": "https://cdn.example.com/characters/huohuo.jpg",
+    "gender": "female"
   }
 ]
 ```
@@ -854,6 +857,7 @@ main_photo: <file>
 - `name`：角色名。
 - `ip`：所属IP作品信息（已展开，避免前端二次请求）。
 - `avatar`：角色头像 URL（可选）。
+ - `gender`：角色性别：`male`(男) / `female`(女) / `other`(其他)，若不传则默认 `female`。
 
 ---
 
@@ -878,7 +882,8 @@ main_photo: <file>
     "id": 1,
     "name": "崩坏：星穹铁道"
   },
-  "avatar": null
+  "avatar": null,
+  "gender": "female"
 }
 ```
 
@@ -895,7 +900,8 @@ main_photo: <file>
 {
   "name": "流萤",
   "ip_id": 1,
-  "avatar": null
+  "avatar": null,
+  "gender": "female"
 }
 ```
 
@@ -906,6 +912,7 @@ main_photo: <file>
 | `name`   | string | 是   | 角色名，最大长度100字符，同一IP下必须唯一                    |
 | `ip_id`  | int    | 是   | 所属IP作品ID（使用 `ip_id` 而非 `ip`）                       |
 | `avatar` | string | 否   | 角色头像 URL，如通过表单上传可使用 `multipart/form-data` |
+| `gender` | string | 否   | 角色性别：`male`(男) / `female`(女) / `other`(其他)，不传时后端默认保存为 `female` |
 
 ##### 响应
 
@@ -931,7 +938,8 @@ main_photo: <file>
 {
   "name": "流萤（更新）",
   "ip_id": 1,
-  "avatar": "https://cdn.example.com/characters/liuying.jpg"
+  "avatar": "https://cdn.example.com/characters/liuying.jpg",
+  "gender": "female"
 }
 ```
 

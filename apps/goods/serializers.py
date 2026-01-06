@@ -111,7 +111,7 @@ class CharacterSimpleSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Character
-        fields = ("id", "name", "ip", "ip_id", "avatar")
+        fields = ("id", "name", "ip", "ip_id", "avatar", "gender")
 
     def create(self, validated_data):
         """创建角色时自动压缩头像"""

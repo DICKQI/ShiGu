@@ -1,6 +1,7 @@
 from uuid import uuid4
 
 from django.db import models
+from django.utils import timezone
 
 
 class IP(models.Model):
@@ -14,10 +15,17 @@ class IP(models.Model):
         db_index=True,
         verbose_name="作品名",
     )
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        null=True,
+        blank=True,
+        verbose_name="创建时间",
+    )
 
     class Meta:
         verbose_name = "IP作品"
         verbose_name_plural = "IP作品"
+        ordering = ["created_at"]
 
     def __str__(self):
         return self.name
@@ -72,11 +80,30 @@ class Character(models.Model):
         blank=True,
         verbose_name="角色头像",
     )
+    
+    GENDER_CHOICES = (
+        ("male", "男"),
+        ("female", "女"),
+        ("other", "其他"),
+    )
+    gender = models.CharField(
+        max_length=10,
+        choices=GENDER_CHOICES,
+        default="female",
+        verbose_name="角色性别",
+    )
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        null=True,
+        blank=True,
+        verbose_name="创建时间",
+    )
 
     class Meta:
         verbose_name = "角色"
         verbose_name_plural = "角色"
         unique_together = ("ip", "name")
+        ordering = ["created_at"]
 
     def __str__(self):
         return f"{self.ip.name} - {self.name}"
@@ -88,10 +115,17 @@ class Category(models.Model):
     """
 
     name = models.CharField(max_length=50, unique=True, verbose_name="类型名")
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        null=True,
+        blank=True,
+        verbose_name="创建时间",
+    )
 
     class Meta:
         verbose_name = "品类"
         verbose_name_plural = "品类"
+        ordering = ["created_at"]
 
     def __str__(self):
         return self.name

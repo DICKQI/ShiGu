@@ -166,7 +166,7 @@ class IPViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         """优化查询，预加载关键词"""
-        return IP.objects.all().prefetch_related("keywords").order_by("id")
+        return IP.objects.all().prefetch_related("keywords").order_by("created_at")
 
     def get_serializer_class(self):
         """根据操作类型选择序列化器"""
@@ -187,7 +187,7 @@ class CharacterViewSet(viewsets.ModelViewSet):
     - destroy: 删除角色
     """
 
-    queryset = Character.objects.all().select_related("ip").order_by("ip__name", "name")
+    queryset = Character.objects.all().select_related("ip").order_by("created_at")
     serializer_class = CharacterSimpleSerializer
     filter_backends = (DjangoFilterBackend, filters.SearchFilter)
     search_fields = ("name", "ip__name", "ip__keywords__value")
@@ -209,7 +209,7 @@ class CategoryViewSet(viewsets.ModelViewSet):
     - destroy: 删除品类
     """
 
-    queryset = Category.objects.all().order_by("name")
+    queryset = Category.objects.all().order_by("created_at")
     serializer_class = CategorySimpleSerializer
     filter_backends = (DjangoFilterBackend, filters.SearchFilter)
     search_fields = ("name",)
