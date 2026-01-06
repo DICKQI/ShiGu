@@ -8,6 +8,7 @@ from .serializers import (
     CharacterSimpleSerializer,
     GoodsDetailSerializer,
     GoodsListSerializer,
+    IPDetailSerializer,
     IPSimpleSerializer,
 )
 
@@ -114,21 +115,29 @@ class IPViewSet(viewsets.ModelViewSet):
     """
     IP作品CRUD接口。
 
-    - list: 获取所有IP作品列表
-    - retrieve: 获取单个IP作品详情
-    - create: 创建新IP作品
-    - update: 更新IP作品
-    - partial_update: 部分更新IP作品
+    - list: 获取所有IP作品列表（包含关键词）
+    - retrieve: 获取单个IP作品详情（包含关键词）
+    - create: 创建新IP作品（支持同时创建关键词）
+    - update: 更新IP作品（支持同时更新关键词）
+    - partial_update: 部分更新IP作品（支持同时更新关键词）
     - destroy: 删除IP作品
     """
 
-    queryset = IP.objects.all().order_by("name")
-    serializer_class = IPSimpleSerializer
     filter_backends = (DjangoFilterBackend, filters.SearchFilter)
     search_fields = ("name", "keywords__value")
     filterset_fields = {
         "name": ["exact", "icontains"],
     }
+
+    def get_queryset(self):
+        """优化查询，预加载关键词"""
+        return IP.objects.all().prefetch_related("keywords").order_by("id")
+
+    def get_serializer_class(self):
+        """根据操作类型选择序列化器"""
+        if self.action in ("create", "update", "partial_update"):
+            return IPDetailSerializer
+        return IPSimpleSerializer
 
 
 class CharacterViewSet(viewsets.ModelViewSet):

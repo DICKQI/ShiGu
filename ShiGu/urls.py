@@ -26,7 +26,12 @@ from apps.goods.views import (
     GoodsViewSet,
     IPViewSet,
 )
-from apps.location.views import StorageNodeListCreateView, StorageNodeTreeView
+from apps.location.views import (
+    StorageNodeDetailView,
+    StorageNodeGoodsView,
+    StorageNodeListCreateView,
+    StorageNodeTreeView,
+)
 
 router = DefaultRouter()
 router.register("goods", GoodsViewSet, basename="goods")
@@ -40,6 +45,8 @@ urlpatterns = [
     path("api/", include(router.urls)),
     # 位置相关接口
     path("api/location/nodes/", StorageNodeListCreateView.as_view(), name="location-nodes"),
+    path("api/location/nodes/<int:pk>/", StorageNodeDetailView.as_view(), name="location-node-detail"),
+    path("api/location/nodes/<int:pk>/goods/", StorageNodeGoodsView.as_view(), name="location-node-goods"),
     path("api/location/tree/", StorageNodeTreeView.as_view(), name="location-tree"),
 ]
 
