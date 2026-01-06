@@ -71,6 +71,7 @@
       - `POST /api/goods/` 等：资产的 CRUD（视具体权限控制而定）。
     - **收纳位置**：
       - `GET /api/location/nodes/`：收纳节点列表。
+      - `GET /api/location/nodes/{id}/goods/`：查看指定节点下的谷子，`?include_children=true` 时包含所有子节点谷子。
       - `GET /api/location/tree/`：收纳位置树数据下发。
   - 统一 DRF 配置中启用了：
     - `django_filters` 和 `SearchFilter` 作为默认过滤后端。
@@ -124,8 +125,7 @@
    python -m venv venv
    source venv/bin/activate  # Windows: venv\Scripts\activate
 
-   pip install django==6.0.*
-   pip install djangorestframework django-filter
+   pip install -r requirements.txt
    ```
 
 3. **迁移数据库**
@@ -204,12 +204,34 @@
   - **GET / POST** `/api/location/nodes/`
   - 用于在后台维护收纳空间的层级结构。
 
+- **收纳节点下的谷子**
+
+  - **GET** `/api/location/nodes/{id}/goods/?include_children=false|true`
+  - 列出当前节点或当前 + 子节点下的所有谷子，返回“瘦身”列表序列化字段。
+
 - **收纳位置树一次性下发**
 
   - **GET** `/api/location/tree/`
   - 返回带 `parent` 与 `path_name` 的扁平节点列表，前端可在内存中构建树。
 
 > 📖 **完整 API 文档**：请参考 `api.md` 文件，包含详细的请求/响应示例和字段说明。
+
+---
+
+## 实现细节与使用注意
+
+- **ID 设计**：`Goods` 使用 UUID 主键，适合前后端解耦和离线草稿合并场景。
+- **图片与压缩**：上传主图或补充图时自动压缩到约 300KB (`apps/goods/utils.compress_image`)，`POST /api/goods/{id}/upload-main-photo/` 支持独立更新主图。
+- **幂等创建**：`GoodsViewSet.perform_create` 基于「IP+角色+名称+入手日期+单价」做幂等写入，防止重复录入。
+- **搜索体验**：`Goods` 支持对名称、IP 名称及 IP 关键词(`IPKeyword`)的轻量搜索；`IP` 关键词在序列化器中支持字符串数组读写。
+- **收纳节点维护**：
+  - `StorageNodeSerializer` 若未提供 `path_name`，会基于父节点自动生成；更新父子关系或名称时会同步刷新路径。
+  - 删除节点会递归删除子节点，并将关联谷子的 `location` 置空，避免悬挂引用。
+  - `StorageNodeGoodsView` 支持 `include_children` 参数做级联查询。
+- **跨域与限流**：开发环境默认开放本地常见端口的 CORS；检索接口限流范围在 `settings.REST_FRAMEWORK.DEFAULT_THROTTLE_RATES` 中统一配置。
+- **媒体与静态文件**：媒体目录为 `media/`（开发环境由 Django 提供），静态文件收集至 `staticfiles/`，生产需用 Nginx 等托管。
+- **数据库与环境**：默认 SQLite；`SECRET_KEY`、`DEBUG`、数据库等生产参数需通过环境变量或独立配置文件覆盖。
+- **后台管理**：通过 `python manage.py createsuperuser` 创建账户后，可在 `/admin/` 维护基础数据（IP/角色/品类/收纳节点等）。
 
 ---
 

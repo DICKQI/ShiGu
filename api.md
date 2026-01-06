@@ -427,21 +427,26 @@ GET /api/location/nodes/2/goods/?include_children=true
 
 #### 查询参数（全部可选）
 
-| 参数名       | 类型   | 说明                                                                                          |
-| ------------ | ------ | --------------------------------------------------------------------------------------------- |
-| `ip`         | int    | IP ID，精确过滤，例如 `/api/goods/?ip=1`                                                     |
-| `character`  | int    | 角色 ID，精确过滤                                                                            |
-| `category`   | int    | 品类 ID，精确过滤                                                                            |
-| `status`     | string | 状态：`in_cabinet` / `outdoor` / `sold`                                                      |
-| `location`   | int    | 位置节点 ID，过滤收纳在某一具体节点下的谷子                                                 |
-| `search`     | string | 轻量模糊搜索：会同时在 `Goods.name`、`IP.name`、`IPKeyword.value` 上匹配    |
-| `page`       | int    | 分页页码（DRF 默认）                                                                         |
+| 参数名        | 类型   | 说明                                                                                          |
+| ------------- | ------ | --------------------------------------------------------------------------------------------- |
+| `ip`          | int    | IP ID，精确过滤，例如 `/api/goods/?ip=1`                                                     |
+| `character`   | int    | 角色 ID，精确过滤                                                                            |
+| `category`    | int    | 品类 ID，精确过滤                                                                            |
+| `status`      | string | 单状态过滤：`in_cabinet` / `outdoor` / `sold`                                               |
+| `status__in`  | string | **多状态过滤**：逗号分隔的状态列表，如：`in_cabinet,sold`                                   |
+| `location`    | int    | 位置节点 ID，过滤收纳在某一具体节点下的谷子                                                 |
+| `search`      | string | 轻量模糊搜索：会同时在 `Goods.name`、`IP.name`、`IPKeyword.value` 上匹配    |
+| `page`        | int    | 分页页码（DRF 默认）                                                                         |
 
 > 示例 1：检索“星铁 + 流萤 + 吧唧，当前在馆”的所有谷子：
 >
 > `/api/goods/?ip=1&character=5&category=2&status=in_cabinet&search=流萤`
 >
-> 示例 2：如果 IP `崩坏：星穹铁道` 额外配置了关键词 `崩铁`、`HSR`，则：
+> 示例 2：检索“星铁 + 流萤 + 吧唧，当前在馆 **或 已售出**”的所有谷子（多状态）：
+>
+> `/api/goods/?ip=1&character=5&category=2&status__in=in_cabinet,sold&search=流萤`
+>
+> 示例 3：如果 IP `崩坏：星穹铁道` 额外配置了关键词 `崩铁`、`HSR`，则：
 >
 > `/api/goods/?search=崩铁` 或 `/api/goods/?search=HSR` 也可以命中该 IP 及其下所有相关谷子。
 
@@ -554,21 +559,22 @@ GET /api/location/nodes/2/goods/?include_children=true
 
 ---
 
-### 4.3 新建 / 编辑谷子（含幂等性）
+### 4.3 新建 / 编辑谷子（主数据 JSON，主图单独上传）
 
-> 说明：目前后端对幂等性做了**简易保护**，防止重复录入完全相同的谷子。
+> 说明：目前后端对幂等性做了**简易保护**，防止重复录入完全相同的谷子。主数据与主图分开：先提交 JSON 创建谷子，再单独上传主图。
 
-- **URL**：`POST /api/goods/`
-- **URL**：`PUT /api/goods/{id}/`
+- **URL**：`POST /api/goods/`（仅主数据，JSON）
+- **URL**：`PUT /api/goods/{id}/`（主数据更新，JSON）
+- **URL**：`PATCH /api/goods/{id}/`（主数据部分更新，JSON）
 
-#### POST 请求体示例
+#### POST 请求体示例（JSON）
 
 ```json
 {
   "name": "流萤限定吧唧",
-  "ip": 1,
-  "character": 5,
-  "category": 1,
+  "ip_id": 1,
+  "character_id": 5,
+  "category_id": 1,
   "location": 3,
   "quantity": 1,
   "price": "35.00",
@@ -580,12 +586,35 @@ GET /api/location/nodes/2/goods/?include_children=true
 ```
 
 说明：
-- 图片上传（`main_photo`、补充图）若通过表单上传，需要由前端改用 `multipart/form-data`。
-- 后端会根据以下组合判断是否重复：
+- 主图 `main_photo` 不在此接口上传；请使用下方 `upload-main-photo`。
+- 后端会根据以下组合判断是否重复（幂等）：
   - `ip + character + name + purchase_date + price`
-  - 若已存在同组合的记录，则不会新建，而是返回已有实例（幂等）。
+  - 若已存在同组合的记录，则不会新建，而是返回已有实例。
 
 **响应**：返回创建后的完整详情（同 4.2）。
+
+#### 4.3.1 主图上传 / 更新接口
+
+- **URL**：`POST /api/goods/{id}/upload-main-photo/`
+- **请求方式**：`multipart/form-data`
+- **字段**：`main_photo`（文件，必填）
+- **说明**：独立上传或更新主图，后台会自动压缩到约 300KB 以下（若需要）。
+
+示例（form-data）：
+
+```
+main_photo: <file>
+```
+
+响应：返回更新后的谷子详情（同 4.2）。
+
+### 4.4 删除谷子
+
+- **URL**：`DELETE /api/goods/{id}/`
+- **说明**：删除指定谷子。关联的补充图片 `GuziImage` 会因外键级联一并删除；若需物理删除存储中的图片，请根据存储后端自行处理。
+- **响应**：
+  - 成功：`204 No Content`
+  - 失败：`404 Not Found`（ID 不存在）
 
 ---
 
@@ -1089,7 +1118,7 @@ GET /api/location/nodes/2/goods/?include_children=true
 
 2. **云展柜列表页**
    - 使用 `GET /api/goods/`，根据筛选条件拼 query：
-     - `ip` / `character` / `category` / `status` / `location` / `search`。
+     - `ip` / `character` / `category` / `status` / `status__in` / `location` / `search`。
    - 列表 Item 展示：
      - 主图：`main_photo`
      - 标题：`name`

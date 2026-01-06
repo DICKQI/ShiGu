@@ -180,8 +180,29 @@ class GoodsDetailSerializer(serializers.ModelSerializer):
     """
 
     ip = IPSimpleSerializer(read_only=True)
+    ip_id = serializers.PrimaryKeyRelatedField(
+        queryset=IP.objects.all(),
+        source="ip",
+        write_only=True,
+        required=False,
+        help_text="所属IP作品ID",
+    )
     character = CharacterSimpleSerializer(read_only=True)
+    character_id = serializers.PrimaryKeyRelatedField(
+        queryset=Character.objects.all(),
+        source="character",
+        write_only=True,
+        required=False,
+        help_text="所属角色ID",
+    )
     category = CategorySimpleSerializer(read_only=True)
+    category_id = serializers.PrimaryKeyRelatedField(
+        queryset=Category.objects.all(),
+        source="category",
+        write_only=True,
+        required=False,
+        help_text="品类ID",
+    )
     location_path = serializers.SerializerMethodField()
     additional_photos = GuziImageSerializer(many=True, read_only=True)
 
@@ -190,8 +211,11 @@ class GoodsDetailSerializer(serializers.ModelSerializer):
         fields = (
             "id",
             "name",
+            "ip_id",
             "ip",
+            "character_id",
             "character",
+            "category_id",
             "category",
             "location_path",
             "location",
@@ -211,6 +235,25 @@ class GoodsDetailSerializer(serializers.ModelSerializer):
         if obj.location:
             return obj.location.path_name or obj.location.name
         return None
+
+    def validate(self, attrs):
+        """
+        保证创建时必填外键，更新时允许部分字段缺省。
+        """
+        if self.instance is None:
+            required_fields = {
+                "ip": "ip_id",
+                "character": "character_id",
+                "category": "category_id",
+            }
+            missing = [
+                alias for key, alias in required_fields.items() if key not in attrs
+            ]
+            if missing:
+                raise serializers.ValidationError(
+                    {field: "创建时必填" for field in missing}
+                )
+        return attrs
 
     def create(self, validated_data):
         """创建谷子时自动压缩主图"""

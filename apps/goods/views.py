@@ -1,5 +1,8 @@
 from django_filters.rest_framework import DjangoFilterBackend
-from rest_framework import filters, viewsets
+from rest_framework import filters, status, viewsets
+from rest_framework.decorators import action
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
+from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 
 from .models import Category, Character, Goods, IP
@@ -11,6 +14,7 @@ from .serializers import (
     IPDetailSerializer,
     IPSimpleSerializer,
 )
+from .utils import compress_image
 
 
 class GoodsViewSet(viewsets.ModelViewSet):
@@ -40,11 +44,13 @@ class GoodsViewSet(viewsets.ModelViewSet):
     )
 
     # 复合过滤：/api/goods/?ip=1&character=5&category=2&status=in_cabinet
+    # 支持多状态筛选：/api/goods/?status__in=in_cabinet,sold
     filterset_fields = {
         "ip": ["exact"],
         "character": ["exact"],
         "category": ["exact"],
-        "status": ["exact"],
+        # status 支持 exact 和 in，in 用 status__in 参数，值用英文逗号分隔
+        "status": ["exact", "in"],
         "location": ["exact"],
     }
 
@@ -60,6 +66,7 @@ class GoodsViewSet(viewsets.ModelViewSet):
     # 限流：专门给检索接口一个 scope，具体速率在 settings.REST_FRAMEWORK.THROTTLE_RATES 中配置
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = "goods_search"
+    parser_classes = (MultiPartParser, FormParser, JSONParser)
 
     def get_queryset(self):
         """
@@ -109,6 +116,34 @@ class GoodsViewSet(viewsets.ModelViewSet):
             return
 
         serializer.save()
+
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="upload-main-photo",
+        parser_classes=[MultiPartParser, FormParser],
+    )
+    def upload_main_photo(self, request, pk=None):
+        """
+        独立上传/更新主图接口，使用 multipart/form-data，字段名：main_photo
+        """
+        instance = self.get_object()
+        main_photo = request.FILES.get("main_photo")
+
+        if not main_photo:
+            return Response(
+                {"detail": "请通过 form-data 提供 main_photo 文件"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        compressed = compress_image(main_photo, max_size_kb=300)
+        instance.main_photo = compressed or main_photo
+        instance.save(update_fields=["main_photo", "updated_at"])
+
+        serializer = GoodsDetailSerializer(
+            instance, context=self.get_serializer_context()
+        )
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
 
 class IPViewSet(viewsets.ModelViewSet):
