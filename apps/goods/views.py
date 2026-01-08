@@ -267,7 +267,8 @@ def bgm_search_characters(request):
     
     请求体:
     {
-        "ip_name": "崩坏：星穹铁道"
+        "ip_name": "崩坏：星穹铁道",
+        "subject_type": 4  // 可选，作品类型：1=书籍, 2=动画, 3=音乐, 4=游戏, 6=三次元
     }
     
     响应:
@@ -287,9 +288,10 @@ def bgm_search_characters(request):
     serializer.is_valid(raise_exception=True)
     
     ip_name = serializer.validated_data['ip_name']
+    subject_type = serializer.validated_data.get('subject_type')
     
     try:
-        display_name, characters = search_ip_characters(ip_name)
+        display_name, characters = search_ip_characters(ip_name, subject_type)
         
         if display_name is None:
             return Response(
