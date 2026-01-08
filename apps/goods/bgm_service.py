@@ -1,10 +1,10 @@
 """
 BGM API 服务模块
 提供搜索IP作品和获取角色列表的核心功能
+支持按作品类型（动画、游戏、书籍等）筛选
 """
 import html
 import urllib.parse
-
 import requests
 
 # --- 配置部分 ---
@@ -16,6 +16,12 @@ USER_AGENT = "DSCWWW/ShiGu(https://github.com/DICKQI/ShiGu_backend)"
 # API 基础 URL
 API_HOST = "https://api.bgm.tv"
 
+# --- 作品类型常量 (Subject Type) ---
+SUBJECT_TYPE_BOOK = 1   # 书籍
+SUBJECT_TYPE_ANIME = 2  # 动画
+SUBJECT_TYPE_MUSIC = 3  # 音乐
+SUBJECT_TYPE_GAME = 4   # 游戏
+SUBJECT_TYPE_REAL = 6   # 三次元/特摄
 
 def get_headers():
     """
@@ -31,23 +37,33 @@ def get_headers():
     return headers
 
 
-def search_subject(keyword):
+def search_subject(keyword, subject_type=None):
     """
     搜索条目，返回第一个匹配结果的 ID 和 名称。
     使用 Legacy Search API 进行模糊匹配。
     
     Args:
-        keyword: 搜索关键词（IP名称）
+        keyword (str): 搜索关键词（IP名称）
+        subject_type (int, optional): 作品类型 (1:书籍, 2:动画, 3:音乐, 4:游戏, 6:三次元). 默认为 None (搜索所有).
     
     Returns:
         tuple: (subject_id, display_name) 或 (None, None) 如果未找到
     """
+    # URL 路径中的关键词仍需手动编码
     encoded_keyword = urllib.parse.quote(keyword)
-    # 搜索接口
-    url = f"{API_HOST}/search/subject/{encoded_keyword}?responseGroup=small"
+    url = f"{API_HOST}/search/subject/{encoded_keyword}"
+    
+    # 构造查询参数
+    params = {
+        "responseGroup": "small"
+    }
+    # 如果指定了类型，则添加到参数中
+    if subject_type:
+        params["type"] = subject_type
     
     try:
-        response = requests.get(url, headers=get_headers(), timeout=10)
+        # requests 会自动处理 params 的拼接
+        response = requests.get(url, headers=get_headers(), params=params, timeout=10)
         response.raise_for_status()
         data = response.json()
         
@@ -128,18 +144,20 @@ def get_characters(subject_id):
         raise Exception(f"获取角色请求失败: {str(e)}")
 
 
-def search_ip_characters(ip_name):
+def search_ip_characters(ip_name, subject_type=None):
     """
     搜索IP作品并获取其角色列表的便捷方法
     
     Args:
-        ip_name: IP作品名称
+        ip_name (str): IP作品名称
+        subject_type (int, optional): 作品类型 (1:书籍, 2:动画, 3:音乐, 4:游戏, 6:三次元). 默认为 None.
     
     Returns:
         tuple: (ip_display_name, characters_list) 或 (None, []) 如果未找到
     """
-    subject_id, display_name = search_subject(ip_name)
+    subject_id, display_name = search_subject(ip_name, subject_type)
     if subject_id and display_name:
+        # print(f"找到作品: {display_name} (ID: {subject_id})") # 调试用
         characters = get_characters(subject_id)
         return display_name, characters
     return None, []

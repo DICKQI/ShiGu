@@ -354,6 +354,11 @@ class BGMSearchRequestSerializer(serializers.Serializer):
         required=True,
         help_text="IP作品名称，例如：崩坏：星穹铁道"
     )
+    subject_type = serializers.IntegerField(
+        required=False,
+        allow_null=True,
+        help_text="作品类型筛选：1=书籍, 2=动画, 3=音乐, 4=游戏, 6=三次元。不传则搜索所有类型"
+    )
 
 
 class BGMCharacterSerializer(serializers.Serializer):
