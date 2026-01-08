@@ -657,12 +657,14 @@ main_photo: <file>
         "id": 3,
         "value": "HSR"
       }
-    ]
+    ],
+    "character_count": 5
   },
   {
     "id": 2,
     "name": "原神",
-    "keywords": []
+    "keywords": [],
+    "character_count": 3
   }
 ]
 ```
@@ -671,6 +673,7 @@ main_photo: <file>
 - `id`：IP作品 ID，用于后续筛选参数。
 - `name`：完整作品名。
 - `keywords`：IP关键词/别名数组，每个关键词包含 `id` 和 `value` 字段。
+- `character_count`：该IP下的角色数量（整数）。
 
 ---
 
@@ -704,7 +707,8 @@ main_photo: <file>
       "id": 3,
       "value": "HSR"
     }
-  ]
+  ],
+  "character_count": 5
 }
 ```
 
@@ -712,6 +716,7 @@ main_photo: <file>
 - `id`：IP作品 ID。
 - `name`：完整作品名。
 - `keywords`：IP关键词/别名数组，每个关键词包含 `id` 和 `value` 字段。
+- `character_count`：该IP下的角色数量（整数）。
 
 ---
 

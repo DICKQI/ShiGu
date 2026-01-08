@@ -1,3 +1,4 @@
+from django.db.models import Count
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action
@@ -166,8 +167,13 @@ class IPViewSet(viewsets.ModelViewSet):
     }
 
     def get_queryset(self):
-        """优化查询，预加载关键词"""
-        return IP.objects.all().prefetch_related("keywords").order_by("created_at")
+        """优化查询，预加载关键词并统计角色数量"""
+        return (
+            IP.objects.all()
+            .prefetch_related("keywords")
+            .annotate(character_count=Count("characters"))
+            .order_by("created_at")
+        )
 
     def get_serializer_class(self):
         """根据操作类型选择序列化器"""

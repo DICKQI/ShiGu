@@ -44,10 +44,19 @@ class IPSimpleSerializer(serializers.ModelSerializer):
     """IP简单序列化器（用于列表和嵌套显示）"""
 
     keywords = IPKeywordSerializer(many=True, read_only=True, help_text="IP关键词列表")
+    character_count = serializers.SerializerMethodField(help_text="该IP下的角色数量")
 
     class Meta:
         model = IP
-        fields = ("id", "name", "keywords")
+        fields = ("id", "name", "keywords", "character_count")
+
+    def get_character_count(self, obj):
+        """统计IP下的角色数量"""
+        # 如果使用了annotate预计算，直接使用结果
+        if hasattr(obj, 'character_count'):
+            return obj.character_count
+        # 否则查询数据库
+        return obj.characters.count()
 
 
 class IPDetailSerializer(serializers.ModelSerializer):
