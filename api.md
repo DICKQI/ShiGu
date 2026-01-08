@@ -806,6 +806,55 @@ main_photo: <file>
 
 ---
 
+#### 5.1.6 获取IP作品下的所有角色
+
+- **URL**：`GET /api/ips/{id}/characters/`
+- **说明**：获取指定IP作品下的所有角色列表。这是通过IP获取角色的专用接口，语义更清晰。
+
+##### 路径参数
+
+| 参数名 | 类型 | 说明            |
+| ------ | ---- | --------------- |
+| `id`   | int  | IP作品主键 `id` |
+
+##### 响应示例
+
+```json
+[
+  {
+    "id": 5,
+    "name": "流萤",
+    "ip": {
+      "id": 1,
+      "name": "崩坏：星穹铁道"
+    },
+    "avatar": null,
+    "gender": "female"
+  },
+  {
+    "id": 6,
+    "name": "花火",
+    "ip": {
+      "id": 1,
+      "name": "崩坏：星穹铁道"
+    },
+    "avatar": "https://cdn.example.com/characters/huohuo.jpg",
+    "gender": "female"
+  }
+]
+```
+
+**字段说明**：
+- `id`：角色 ID，用于后续筛选参数。
+- `name`：角色名。
+- `ip`：所属IP作品信息（已展开，避免前端二次请求）。
+- `avatar`：角色头像 URL（可选）。
+- `gender`：角色性别：`male`(男) / `female`(女) / `other`(其他)。
+
+> **注意**：此接口与 `GET /api/characters/?ip={id}` 功能相同，但提供更直观的 RESTful 语义。可以根据前端使用习惯选择使用哪个接口。
+
+---
+
 ### 5.2 角色 CRUD 接口
 
 #### 5.2.1 获取角色列表

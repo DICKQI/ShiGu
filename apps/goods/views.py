@@ -156,6 +156,7 @@ class IPViewSet(viewsets.ModelViewSet):
     - update: 更新IP作品（支持同时更新关键词）
     - partial_update: 部分更新IP作品（支持同时更新关键词）
     - destroy: 删除IP作品
+    - characters: 获取指定IP下的所有角色列表（/api/ips/{id}/characters/）
     """
 
     filter_backends = (DjangoFilterBackend, filters.SearchFilter)
@@ -173,6 +174,19 @@ class IPViewSet(viewsets.ModelViewSet):
         if self.action in ("create", "update", "partial_update"):
             return IPDetailSerializer
         return IPSimpleSerializer
+
+    @action(detail=True, methods=["get"], url_path="characters")
+    def characters(self, request, pk=None):
+        """
+        获取指定IP下的所有角色列表
+        URL: /api/ips/{id}/characters/
+        """
+        ip = self.get_object()
+        characters = ip.characters.all().select_related("ip").order_by("created_at")
+        serializer = CharacterSimpleSerializer(
+            characters, many=True, context={"request": request}
+        )
+        return Response(serializer.data)
 
 
 class CharacterViewSet(viewsets.ModelViewSet):

@@ -112,6 +112,20 @@ class CharacterSimpleSerializer(serializers.ModelSerializer):
     class Meta:
         model = Character
         fields = ("id", "name", "ip", "ip_id", "avatar", "gender")
+        extra_kwargs = {
+            "avatar": {"read_only": False, "required": False},
+        }
+    
+    def to_representation(self, instance):
+        """构建完整的头像URL"""
+        representation = super().to_representation(instance)
+        if instance.avatar:
+            request = self.context.get('request')
+            if request:
+                representation['avatar'] = request.build_absolute_uri(instance.avatar.url)
+            else:
+                representation['avatar'] = instance.avatar.url
+        return representation
 
     def create(self, validated_data):
         """创建角色时自动压缩头像"""
