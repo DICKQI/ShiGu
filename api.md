@@ -33,10 +33,11 @@
 
 #### `IP` 作品来源表
 
-| 字段名      | 类型                  | 说明                                                  |
-| ----------- | --------------------- | ----------------------------------------------------- |
-| `id`        | Integer (PK)          | 自增主键                                              |
-| `name`      | Char(100), 唯一, 索引 | 作品名，如：`崩坏：星穹铁道`                          |
+| 字段名         | 类型                  | 说明                                                  |
+| -------------- | --------------------- | ----------------------------------------------------- |
+| `id`           | Integer (PK)          | 自增主键                                              |
+| `name`         | Char(100), 唯一, 索引 | 作品名，如：`崩坏：星穹铁道`                          |
+| `subject_type` | Integer (可空)        | 作品类型：`1`=书籍, `2`=动画, `3`=音乐, `4`=游戏, `6`=三次元/特摄 |
 
 #### `IPKeyword` IP 多关键词表
 
@@ -381,14 +382,16 @@ GET /api/location/nodes/2/goods/?include_children=true
       "name": "流萤花火双人立牌",
       "ip": {
         "id": 1,
-        "name": "崩坏：星穹铁道"
+        "name": "崩坏：星穹铁道",
+        "subject_type": 4
       },
       "character": {
         "id": 5,
         "name": "流萤",
         "ip": {
           "id": 1,
-          "name": "崩坏：星穹铁道"
+          "name": "崩坏：星穹铁道",
+          "subject_type": 4
         }
       },
       "category": {
@@ -465,7 +468,8 @@ GET /api/location/nodes/2/goods/?include_children=true
       "name": "流萤花火双人立牌",
       "ip": {
         "id": 1,
-        "name": "崩坏：星穹铁道"
+        "name": "崩坏：星穹铁道",
+        "subject_type": 4
       },
       "characters": [
         {
@@ -473,7 +477,8 @@ GET /api/location/nodes/2/goods/?include_children=true
           "name": "流萤",
           "ip": {
             "id": 1,
-            "name": "崩坏：星穹铁道"
+            "name": "崩坏：星穹铁道",
+            "subject_type": 4
           },
           "avatar": null,
           "gender": "female"
@@ -483,7 +488,8 @@ GET /api/location/nodes/2/goods/?include_children=true
           "name": "花火",
           "ip": {
             "id": 1,
-            "name": "崩坏：星穹铁道"
+            "name": "崩坏：星穹铁道",
+            "subject_type": 4
           },
           "avatar": "https://cdn.example.com/characters/huohuo.jpg",
           "gender": "female"
@@ -529,7 +535,8 @@ GET /api/location/nodes/2/goods/?include_children=true
   "name": "流萤花火双人立牌",
   "ip": {
     "id": 1,
-    "name": "崩坏：星穹铁道"
+    "name": "崩坏：星穹铁道",
+    "subject_type": 4
   },
   "characters": [
     {
@@ -537,7 +544,8 @@ GET /api/location/nodes/2/goods/?include_children=true
       "name": "流萤",
       "ip": {
         "id": 1,
-        "name": "崩坏：星穹铁道"
+        "name": "崩坏：星穹铁道",
+        "subject_type": 4
       },
       "avatar": null,
       "gender": "female"
@@ -547,7 +555,8 @@ GET /api/location/nodes/2/goods/?include_children=true
       "name": "花火",
       "ip": {
         "id": 1,
-        "name": "崩坏：星穹铁道"
+        "name": "崩坏：星穹铁道",
+        "subject_type": 4
       },
       "avatar": "https://cdn.example.com/characters/huohuo.jpg",
       "gender": "female"
@@ -666,6 +675,8 @@ main_photo: <file>
 | 参数名 | 类型   | 说明                                    |
 | ------ | ------ | --------------------------------------- |
 | `name` | string | 按名称精确或模糊匹配（`exact` / `icontains`） |
+| `subject_type` | int | 按作品类型精确匹配，例如：`4` 表示游戏类型 |
+| `subject_type__in` | string | **多类型筛选**：逗号分隔的类型列表，如：`2,4` 表示动画或游戏类型 |
 | `search` | string | 轻量搜索：在 `name`、`keywords__value` 上匹配 |
 
 ##### 响应示例
@@ -675,6 +686,7 @@ main_photo: <file>
   {
     "id": 1,
     "name": "崩坏：星穹铁道",
+    "subject_type": 4,
     "keywords": [
       {
         "id": 1,
@@ -694,6 +706,7 @@ main_photo: <file>
   {
     "id": 2,
     "name": "原神",
+    "subject_type": null,
     "keywords": [],
     "character_count": 3
   }
@@ -703,8 +716,14 @@ main_photo: <file>
 **字段说明**：
 - `id`：IP作品 ID，用于后续筛选参数。
 - `name`：完整作品名。
+- `subject_type`：作品类型，可选值：`1`=书籍, `2`=动画, `3`=音乐, `4`=游戏, `6`=三次元/特摄。可为 `null`。
 - `keywords`：IP关键词/别名数组，每个关键词包含 `id` 和 `value` 字段。
 - `character_count`：该IP下的角色数量（整数）。
+
+**使用示例**：
+- 筛选游戏类型的IP：`GET /api/ips/?subject_type=4`
+- 筛选动画或游戏类型的IP：`GET /api/ips/?subject_type__in=2,4`
+- 组合筛选：`GET /api/ips/?subject_type=4&name__icontains=星铁`
 
 ---
 
@@ -725,6 +744,7 @@ main_photo: <file>
 {
   "id": 1,
   "name": "崩坏：星穹铁道",
+  "subject_type": 4,
   "keywords": [
     {
       "id": 1,
@@ -746,6 +766,7 @@ main_photo: <file>
 **字段说明**：
 - `id`：IP作品 ID。
 - `name`：完整作品名。
+- `subject_type`：作品类型，可选值：`1`=书籍, `2`=动画, `3`=音乐, `4`=游戏, `6`=三次元/特摄。可为 `null`。
 - `keywords`：IP关键词/别名数组，每个关键词包含 `id` 和 `value` 字段。
 - `character_count`：该IP下的角色数量（整数）。
 
@@ -761,16 +782,18 @@ main_photo: <file>
 ```json
 {
   "name": "崩坏：星穹铁道",
+  "subject_type": 4,
   "keywords": ["星铁", "崩铁", "HSR"]
 }
 ```
 
 ##### 字段说明
 
-| 字段名    | 类型           | 必填 | 说明                                                                 |
-| --------- | -------------- | ---- | -------------------------------------------------------------------- |
-| `name`    | string         | 是   | 作品名，必须唯一，最大长度100字符                                    |
-| `keywords`| array[string]  | 否   | 关键词/别名列表，例如：`["星铁", "崩铁", "HSR"]`。每个关键词最大长度50字符，会自动去重和去空 |
+| 字段名         | 类型           | 必填 | 说明                                                                 |
+| -------------- | -------------- | ---- | -------------------------------------------------------------------- |
+| `name`         | string         | 是   | 作品名，必须唯一，最大长度100字符                                    |
+| `subject_type` | integer        | 否   | 作品类型：`1`=书籍, `2`=动画, `3`=音乐, `4`=游戏, `6`=三次元/特摄。可为 `null` |
+| `keywords`     | array[string]  | 否   | 关键词/别名列表，例如：`["星铁", "崩铁", "HSR"]`。每个关键词最大长度50字符，会自动去重和去空 |
 
 ##### 响应
 
@@ -797,6 +820,7 @@ main_photo: <file>
 ```json
 {
   "name": "崩坏：星穹铁道（更新）",
+  "subject_type": 4,
   "keywords": ["星铁", "崩铁", "HSR", "星穹铁道"]
 }
 ```
@@ -805,16 +829,18 @@ main_photo: <file>
 
 ```json
 {
+  "subject_type": 2,
   "keywords": ["星铁", "崩铁"]
 }
 ```
 
 ##### 字段说明
 
-| 字段名    | 类型           | 必填 | 说明                                                                 |
-| --------- | -------------- | ---- | -------------------------------------------------------------------- |
-| `name`    | string         | 否   | 作品名，最大长度100字符（PUT 必填，PATCH 可选）                      |
-| `keywords`| array[string]  | 否   | 关键词/别名列表，例如：`["星铁", "崩铁", "HSR"]`。每个关键词最大长度50字符。更新时会**完全替换**现有关键词列表（删除不在列表中的关键词，添加新关键词） |
+| 字段名         | 类型           | 必填 | 说明                                                                 |
+| -------------- | -------------- | ---- | -------------------------------------------------------------------- |
+| `name`         | string         | 否   | 作品名，最大长度100字符（PUT 必填，PATCH 可选）                      |
+| `subject_type` | integer        | 否   | 作品类型：`1`=书籍, `2`=动画, `3`=音乐, `4`=游戏, `6`=三次元/特摄。可为 `null`（PUT 可选，PATCH 可选） |
+| `keywords`     | array[string]  | 否   | 关键词/别名列表，例如：`["星铁", "崩铁", "HSR"]`。每个关键词最大长度50字符。更新时会**完全替换**现有关键词列表（删除不在列表中的关键词，添加新关键词） |
 
 ##### 响应
 
@@ -862,7 +888,8 @@ main_photo: <file>
     "name": "流萤",
     "ip": {
       "id": 1,
-      "name": "崩坏：星穹铁道"
+      "name": "崩坏：星穹铁道",
+      "subject_type": 4
     },
     "avatar": null,
     "gender": "female"
@@ -872,7 +899,8 @@ main_photo: <file>
     "name": "花火",
     "ip": {
       "id": 1,
-      "name": "崩坏：星穹铁道"
+      "name": "崩坏：星穹铁道",
+      "subject_type": 4
     },
     "avatar": "https://cdn.example.com/characters/huohuo.jpg",
     "gender": "female"
@@ -883,7 +911,7 @@ main_photo: <file>
 **字段说明**：
 - `id`：角色 ID，用于后续筛选参数。
 - `name`：角色名。
-- `ip`：所属IP作品信息（已展开，避免前端二次请求）。
+- `ip`：所属IP作品信息（已展开，避免前端二次请求），包含 `subject_type` 字段。
 - `avatar`：角色头像 URL（可选）。
 - `gender`：角色性别：`male`(男) / `female`(女) / `other`(其他)。
 
@@ -919,7 +947,8 @@ main_photo: <file>
     "name": "流萤",
     "ip": {
       "id": 1,
-      "name": "崩坏：星穹铁道"
+      "name": "崩坏：星穹铁道",
+      "subject_type": 4
     },
     "avatar": null,
     "gender": "female"
@@ -929,7 +958,8 @@ main_photo: <file>
     "name": "花火",
     "ip": {
       "id": 1,
-      "name": "崩坏：星穹铁道"
+      "name": "崩坏：星穹铁道",
+      "subject_type": 4
     },
     "avatar": "https://cdn.example.com/characters/huohuo.jpg",
     "gender": "female"
@@ -940,9 +970,9 @@ main_photo: <file>
 **字段说明**：
 - `id`：角色 ID，用于后续筛选参数。
 - `name`：角色名。
-- `ip`：所属IP作品信息（已展开，避免前端二次请求）。
+- `ip`：所属IP作品信息（已展开，避免前端二次请求），包含 `subject_type` 字段。
 - `avatar`：角色头像 URL（可选）。
- - `gender`：角色性别：`male`(男) / `female`(女) / `other`(其他)，若不传则默认 `female`。
+- `gender`：角色性别：`male`(男) / `female`(女) / `other`(其他)，若不传则默认 `female`。
 
 ---
 
@@ -965,7 +995,8 @@ main_photo: <file>
   "name": "流萤",
   "ip": {
     "id": 1,
-    "name": "崩坏：星穹铁道"
+    "name": "崩坏：星穹铁道",
+    "subject_type": 4
   },
   "avatar": null,
   "gender": "female"
@@ -1328,6 +1359,8 @@ main_photo: <file>
 
 #### 请求体（JSON）
 
+**基础示例（不指定作品类型）：**
+
 ```json
 {
   "characters": [
@@ -1343,6 +1376,25 @@ main_photo: <file>
 }
 ```
 
+**指定作品类型示例：**
+
+```json
+{
+  "characters": [
+    {
+      "ip_name": "崩坏：星穹铁道",
+      "character_name": "流萤",
+      "subject_type": 4
+    },
+    {
+      "ip_name": "崩坏：星穹铁道",
+      "character_name": "花火",
+      "subject_type": 4
+    }
+  ]
+}
+```
+
 字段说明：
 
 | 字段名              | 类型            | 必填 | 说明                                  |
@@ -1350,11 +1402,13 @@ main_photo: <file>
 | `characters`        | array[object]   | 是   | 待创建的角色列表                      |
 | `ip_name`           | string          | 是   | IP 作品名，对应 `IP.name`            |
 | `character_name`    | string          | 是   | 角色名，对应 `Character.name`        |
+| `subject_type`      | integer         | 否   | 作品类型：`1`=书籍, `2`=动画, `3`=音乐, `4`=游戏, `6`=三次元/特摄。可选，创建新 IP 时使用；如果 IP 已存在但 `subject_type` 为空，且提供了此字段，则更新 IP 的 `subject_type` |
 
 > 约束 / 行为：
 > - 使用模型约束 `unique_together (ip, name)` 保证**同一 IP 下角色名唯一**；
 > - 对于已存在的 (ip, name) 组合，接口会返回 `already_exists`，不会抛异常；
 > - 性别 `gender`、头像 `avatar` 当前由后端默认处理：`gender` 默认 `female`，`avatar` 为空。
+> - `subject_type` 字段：如果创建新 IP 时提供了此字段，会在创建 IP 时设置作品类型；如果 IP 已存在但 `subject_type` 为 `null`，且提供了此字段，则更新 IP 的 `subject_type`。
 
 #### 响应体（成功示例）
 

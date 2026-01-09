@@ -15,6 +15,23 @@ class IP(models.Model):
         db_index=True,
         verbose_name="作品名",
     )
+    
+    # 作品类型：1=书籍, 2=动画, 3=音乐, 4=游戏, 6=三次元/特摄
+    SUBJECT_TYPE_CHOICES = (
+        (1, "书籍"),
+        (2, "动画"),
+        (3, "音乐"),
+        (4, "游戏"),
+        (6, "三次元/特摄"),
+    )
+    subject_type = models.IntegerField(
+        choices=SUBJECT_TYPE_CHOICES,
+        null=True,
+        blank=True,
+        verbose_name="作品类型",
+        help_text="1=书籍, 2=动画, 3=音乐, 4=游戏, 6=三次元/特摄",
+    )
+    
     created_at = models.DateTimeField(
         auto_now_add=True,
         null=True,

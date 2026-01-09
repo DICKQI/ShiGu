@@ -1,11 +1,38 @@
 # 拾谷 · ShiGu
 
+<div align="center">
+
 > 一套面向「吃谷人」的个人谷子资产管理与检索系统
 
-**拾谷（ShiGu）** 是一套基于 **Django 6 + Django REST Framework** 构建的谷子（动漫/游戏周边商品）资产管理系统。它聚焦两个核心问题：
+[![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://www.python.org/)
+[![Django](https://img.shields.io/badge/Django-6.0+-green.svg)](https://www.djangoproject.com/)
+[![DRF](https://img.shields.io/badge/DRF-3.14+-red.svg)](https://www.django-rest-framework.org/)
+[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
+[功能特性](#-核心特性) • [快速开始](#-快速开始) • [API 文档](#-api-说明) • [项目架构](#-代码结构)
+
+</div>
+
+---
+
+## 📖 项目简介
+
+**拾谷（ShiGu）** 是一套基于 **Django 6 + Django REST Framework** 构建的谷子（动漫/游戏周边商品）资产管理系统。专为「吃谷人」打造，帮助用户高效管理、检索和定位个人收藏。
+
+### 核心价值
+
+系统聚焦两个核心问题：
 
 - **我有什么谷子？** —— 按 IP / 角色 / 品类等多维度快速检索、统一管理资产。
 - **它们都放哪儿了？** —— 用树状的「物理收纳空间」模型精确标记每一件谷子的存放位置。
+
+### 适用场景
+
+- 🎯 **个人收藏管理**：记录和追踪自己的谷子收藏
+- 🔍 **快速检索**：通过多维筛选快速找到想要的谷子
+- 📍 **位置定位**：精确标记每件谷子的物理存放位置
+- 📊 **资产管理**：统计资产价值、购入时间等
+- 🔗 **BGM 集成**：从 Bangumi 快速导入 IP 和角色数据
 
 ---
 
@@ -41,6 +68,23 @@
 - **查询优化**：列表接口使用瘦身序列化器，详情接口提供完整数据
 - **限流保护**：检索接口限流 60 次/分钟，防止恶意请求
 - **CORS 支持**：完善的跨域配置，支持前后端分离部署
+
+---
+
+## 📑 目录
+
+- [项目简介](#-项目简介)
+- [核心特性](#-核心特性)
+- [功能概览](#-功能概览)
+- [技术栈](#️-技术栈)
+- [代码结构](#-代码结构)
+- [快速开始](#-快速开始)
+- [API 说明](#-api-说明)
+- [实现细节](#-实现细节与使用注意)
+- [项目亮点](#-项目亮点)
+- [部署指南](#-部署指南)
+- [未来规划](#-todo--未来规划)
+- [贡献指南](#-贡献指南)
 
 ---
 
@@ -149,64 +193,125 @@ ShiGu/
 
 ### 环境要求
 
-- Python 3.11+（推荐与 Django 6.0 匹配的版本）
-- pip / venv 或其他虚拟环境管理工具
+- **Python**: 3.11+（推荐与 Django 6.0 匹配的版本）
+- **数据库**: SQLite（开发环境，生产环境支持 PostgreSQL/MySQL）
+- **包管理**: pip / venv / poetry 等虚拟环境管理工具
 
-### 本地运行步骤
+### 安装步骤
 
-1. **克隆项目**
+#### 1. 克隆项目
 
-   ```bash
-   git clone <your-repo-url> ShiGu
-   cd ShiGu
-   ```
+```bash
+git clone <your-repo-url> ShiGu_backend
+cd ShiGu_backend
+```
 
-2. **创建虚拟环境并安装依赖**
+#### 2. 创建虚拟环境
 
-   ```bash
-   python -m venv venv
-   # Windows
-   venv\Scripts\activate
-   # Linux/macOS
-   source venv/bin/activate
+**使用 venv（推荐）**：
+```bash
+# 创建虚拟环境
+python -m venv venv
 
-   pip install -r requirements.txt
-   ```
+# 激活虚拟环境
+# Windows
+venv\Scripts\activate
+# Linux/macOS
+source venv/bin/activate
+```
 
-3. **迁移数据库**
+**使用 poetry（可选）**：
+```bash
+poetry install
+poetry shell
+```
 
-   ```bash
-   python manage.py migrate
-   ```
+#### 3. 安装依赖
 
-4. **创建超级管理员（可选，用于 Django Admin）**
+```bash
+pip install -r requirements.txt
+```
 
-   ```bash
-   python manage.py createsuperuser
-   ```
+#### 4. 配置环境变量（可选）
 
-5. **配置 BGM API（可选，用于角色数据导入）**
+创建 `.env` 文件（生产环境必需）：
+```env
+SECRET_KEY=your-secret-key-here
+DEBUG=False
+ALLOWED_HOSTS=your-domain.com
+DATABASE_URL=postgresql://user:password@localhost:5432/shiGu_db
+```
 
-   如需使用 BGM API 导入角色数据功能，需要配置 Access Token：
-   - 在 `apps/goods/bgm_service.py` 中修改 `ACCESS_TOKEN` 变量
-   - 获取 Token：访问 [Bangumi API 文档](https://bangumi.github.io/api/) 申请个人访问令牌
-   - 如不配置 Token，BGM API 功能仍可使用，但可能受到请求频率限制
+#### 5. 数据库迁移
 
-6. **启动开发服务器**
+```bash
+# 创建迁移文件（如需要）
+python manage.py makemigrations
 
-   ```bash
-   python manage.py runserver
-   ```
+# 执行迁移
+python manage.py migrate
+```
 
-   默认访问地址为 `http://127.0.0.1:8000/`：
-   - Django Admin：`/admin/`
-   - API 根路径：`/api/`
-   - BGM API：`/api/bgm/search-characters/`、`/api/bgm/create-characters/`
-   - API 文档：参考 `api.md`
+#### 6. 创建超级管理员（可选）
+
+用于访问 Django Admin 后台：
+```bash
+python manage.py createsuperuser
+```
+
+#### 7. 配置 BGM API（可选）
+
+如需使用 BGM API 导入角色数据功能：
+
+1. 在 `apps/goods/bgm_service.py` 中修改 `ACCESS_TOKEN` 变量
+2. 获取 Token：访问 [Bangumi API 文档](https://bangumi.github.io/api/) 申请个人访问令牌
+3. 如不配置 Token，BGM API 功能仍可使用，但可能受到请求频率限制
+
+#### 8. 启动开发服务器
+
+```bash
+python manage.py runserver
+```
+
+**默认访问地址**：`http://127.0.0.1:8000/`
+
+- **Django Admin**：`http://127.0.0.1:8000/admin/`
+- **API 根路径**：`http://127.0.0.1:8000/api/`
+- **BGM API**：
+  - `POST /api/bgm/search-characters/`
+  - `POST /api/bgm/create-characters/`
+- **完整 API 文档**：参考 [`api.md`](api.md)
+
+#### 9. 验证安装
+
+访问 `http://127.0.0.1:8000/api/` 应能看到 DRF 的 API 根视图。
 
 ---
 
 ## 📖 API 说明
+
+> 📚 **完整 API 文档**请参考 [`api.md`](api.md)，包含详细的请求/响应示例和字段说明。
+
+### API 基础信息
+
+- **Base URL**: `http://your-domain.com/api/`
+- **Content-Type**: `application/json`
+- **认证方式**: 当前版本暂不强制认证（生产环境建议添加）
+
+### 接口概览
+
+| 模块 | 端点 | 说明 |
+|------|------|------|
+| **基础数据** | `/api/ips/` | IP 作品 CRUD |
+| | `/api/characters/` | 角色 CRUD |
+| | `/api/categories/` | 品类 CRUD |
+| **谷子管理** | `/api/goods/` | 谷子检索与 CRUD |
+| | `/api/goods/{id}/upload-main-photo/` | 上传主图 |
+| **位置管理** | `/api/location/nodes/` | 收纳节点 CRUD |
+| | `/api/location/tree/` | 位置树结构 |
+| | `/api/location/nodes/{id}/goods/` | 节点下商品查询 |
+| **BGM 集成** | `/api/bgm/search-characters/` | 搜索 IP 并获取角色 |
+| | `/api/bgm/create-characters/` | 批量创建 IP 和角色 |
 
 ### 基础数据 CRUD
 
@@ -282,7 +387,125 @@ ShiGu/
   - 请求体：`{"characters": [{"ip_name": "崩坏：星穹铁道", "character_name": "流萤"}, ...]}`
   - 返回：创建统计和每个角色的处理结果（created / already_exists / error）
 
-> 📖 **完整 API 文档**：请参考 `api.md` 文件，包含详细的请求/响应示例和字段说明。
+---
+
+## 🚢 部署指南
+
+### 生产环境配置
+
+#### 1. 环境变量配置
+
+创建 `.env` 文件或设置系统环境变量：
+
+```env
+# 安全配置
+SECRET_KEY=your-very-long-random-secret-key
+DEBUG=False
+ALLOWED_HOSTS=your-domain.com,www.your-domain.com
+
+# 数据库配置（PostgreSQL 示例）
+DATABASE_URL=postgresql://user:password@localhost:5432/shiGu_db
+
+# CORS 配置
+CORS_ALLOWED_ORIGINS=https://your-frontend-domain.com
+```
+
+#### 2. 数据库迁移
+
+```bash
+python manage.py migrate
+python manage.py collectstatic
+```
+
+#### 3. 使用 Gunicorn（推荐）
+
+```bash
+# 安装 Gunicorn
+pip install gunicorn
+
+# 启动服务
+gunicorn ShiGu.wsgi:application --bind 0.0.0.0:8000 --workers 4
+```
+
+#### 4. Nginx 配置示例
+
+```nginx
+server {
+    listen 80;
+    server_name your-domain.com;
+
+    # 静态文件
+    location /static/ {
+        alias /path/to/ShiGu_backend/staticfiles/;
+    }
+
+    # 媒体文件
+    location /media/ {
+        alias /path/to/ShiGu_backend/media/;
+    }
+
+    # API 代理
+    location / {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+#### 5. Systemd 服务配置（可选）
+
+创建 `/etc/systemd/system/shigu.service`：
+
+```ini
+[Unit]
+Description=ShiGu Gunicorn daemon
+After=network.target
+
+[Service]
+User=www-data
+Group=www-data
+WorkingDirectory=/path/to/ShiGu_backend
+ExecStart=/path/to/venv/bin/gunicorn ShiGu.wsgi:application --bind 127.0.0.1:8000 --workers 4
+
+[Install]
+WantedBy=multi-user.target
+```
+
+启动服务：
+```bash
+sudo systemctl start shigu
+sudo systemctl enable shigu
+```
+
+### Docker 部署（可选）
+
+项目可扩展为 Docker 部署，示例 `Dockerfile`：
+
+```dockerfile
+FROM python:3.11-slim
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+RUN python manage.py collectstatic --noinput
+
+CMD ["gunicorn", "ShiGu.wsgi:application", "--bind", "0.0.0.0:8000"]
+```
+
+### 性能优化建议
+
+- **数据库**：生产环境使用 PostgreSQL 或 MySQL，配置连接池
+- **缓存**：集成 Redis 进行查询缓存和会话存储
+- **CDN**：媒体文件使用 CDN 加速
+- **静态文件**：使用 Nginx 直接提供静态文件服务
+- **监控**：集成 Sentry 等错误监控工具
 
 ---
 
@@ -376,30 +599,81 @@ ShiGu/
 
 ---
 
-## 🌍 English Overview
+## 🤝 贡献指南
 
-**ShiGu** is a small but focused inventory and location management system for anime / game merch collectors. It provides:
+我们欢迎所有形式的贡献！
 
-- A rich **goods model** linking IP, character (M2M), category and physical storage location
-- High‑performance **search & filter APIs** with index‑friendly fields and basic idempotent create logic
-- A tree‑like **storage node model** to describe real‑world spaces (room → cabinet → shelf → drawer), exposed through simple, cache‑friendly APIs
-- **IP keyword system** for enhanced search experience
-- **Automatic image compression** to optimize storage usage
+### 贡献方式
 
-The name **ShiGu** plays on the Chinese words for "eating merch" (吃谷) and "picking up / collecting" (拾谷), emphasizing both the emotional side of collecting and the structured act of organizing your collection.
+1. **报告问题**：发现 Bug 或有功能建议？请提交 [Issue](../../issues)
+2. **提交代码**：Fork 项目 → 创建功能分支 → 提交更改 → 发起 Pull Request
+3. **改进文档**：完善文档、添加示例、修正错别字都欢迎
+
+### 开发规范
+
+- 遵循 PEP 8 Python 代码规范
+- 提交前运行测试：`python manage.py test`
+- 保持代码注释清晰，特别是复杂逻辑
+- 提交信息使用清晰的中文或英文描述
+
+### Pull Request 流程
+
+1. Fork 本仓库
+2. 创建功能分支 (`git checkout -b feature/AmazingFeature`)
+3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
+4. 推送到分支 (`git push origin feature/AmazingFeature`)
+5. 开启 Pull Request
+
+---
+
+## 📝 更新日志
+
+### v1.0.0 (2024)
+- ✨ 初始版本发布
+- 🎯 完整的谷子资产管理功能
+- 🔍 多维检索与筛选系统
+- 📍 树状收纳位置管理
+- 🤖 BGM API 集成
+- 🖼️ 图片自动压缩
+- 🔐 幂等性保护机制
 
 ---
 
 ## 📄 许可证
 
-本项目采用 MIT 许可证。
+本项目采用 [MIT 许可证](LICENSE)。
 
 ---
 
-## 🤝 贡献
+## 🙏 致谢
 
-欢迎提交 Issue 和 Pull Request！
+- [Django](https://www.djangoproject.com/) - Web 框架
+- [Django REST Framework](https://www.django-rest-framework.org/) - RESTful API 框架
+- [Bangumi API](https://bangumi.github.io/api/) - 动漫数据来源
 
 ---
+
+## 🌍 English Overview
+
+**ShiGu** is a focused inventory and location management system for anime / game merch collectors. It provides:
+
+- A rich **goods model** linking IP, character (M2M), category and physical storage location
+- High‑performance **search & filter APIs** with index‑friendly fields and basic idempotent create logic
+- A tree‑like **storage node model** to describe real‑world spaces (room → cabinet → shelf → drawer)
+- **IP keyword system** for enhanced search experience
+- **Automatic image compression** to optimize storage usage
+- **BGM API integration** for quick IP and character data import
+
+The name **ShiGu** plays on the Chinese words for "eating merch" (吃谷) and "picking up / collecting" (拾谷), emphasizing both the emotional side of collecting and the structured act of organizing your collection.
+
+---
+
+<div align="center">
 
 **拾谷 · ShiGu** - 让每一件谷子都有归属 ✨
+
+Made with ❤️ for 吃谷人
+
+[⬆ 返回顶部](#拾谷--shigu)
+
+</div>

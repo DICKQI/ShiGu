@@ -48,7 +48,7 @@ class IPSimpleSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = IP
-        fields = ("id", "name", "keywords", "character_count")
+        fields = ("id", "name", "subject_type", "keywords", "character_count")
 
     def get_character_count(self, obj):
         """统计IP下的角色数量"""
@@ -66,7 +66,7 @@ class IPDetailSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = IP
-        fields = ("id", "name", "keywords")
+        fields = ("id", "name", "subject_type", "keywords")
 
     def create(self, validated_data):
         """创建IP时同时创建关键词"""
@@ -87,6 +87,9 @@ class IPDetailSerializer(serializers.ModelSerializer):
 
         # 更新IP基本信息
         instance.name = validated_data.get("name", instance.name)
+        # 更新 subject_type（如果提供了）
+        if "subject_type" in validated_data:
+            instance.subject_type = validated_data.get("subject_type")
         instance.save()
 
         # 如果提供了keywords字段，则更新关键词
@@ -385,6 +388,11 @@ class BGMCreateCharacterRequestSerializer(serializers.Serializer):
         max_length=100,
         required=True,
         help_text="角色名称"
+    )
+    subject_type = serializers.IntegerField(
+        required=False,
+        allow_null=True,
+        help_text="作品类型：1=书籍, 2=动画, 3=音乐, 4=游戏, 6=三次元/特摄。可选，创建IP时使用"
     )
 
 

@@ -182,6 +182,7 @@ class IPViewSet(viewsets.ModelViewSet):
     search_fields = ("name", "keywords__value")
     filterset_fields = {
         "name": ["exact", "icontains"],
+        "subject_type": ["exact", "in"],  # exact: 精确匹配，in: 多值筛选（逗号分隔）
     }
 
     def get_queryset(self):
@@ -365,10 +366,19 @@ def bgm_create_characters(request):
     for char_data in characters_data:
         ip_name = char_data['ip_name']
         character_name = char_data['character_name']
+        subject_type = char_data.get('subject_type')  # 可选字段
         
         try:
             # 获取或创建IP
-            ip_obj, ip_created = IP.objects.get_or_create(name=ip_name)
+            # 如果提供了 subject_type，在创建新 IP 时使用它
+            ip_obj, ip_created = IP.objects.get_or_create(
+                name=ip_name,
+                defaults={'subject_type': subject_type} if subject_type else {}
+            )
+            # 如果 IP 已存在但 subject_type 为空，且提供了 subject_type，则更新它
+            if not ip_created and ip_obj.subject_type is None and subject_type:
+                ip_obj.subject_type = subject_type
+                ip_obj.save(update_fields=['subject_type'])
             
             # 获取或创建角色（使用unique_together约束避免重复）
             character_obj, char_created = Character.objects.get_or_create(

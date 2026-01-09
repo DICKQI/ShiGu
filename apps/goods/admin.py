@@ -11,7 +11,8 @@ class IPKeywordInline(admin.TabularInline):
 
 @admin.register(IP)
 class IPAdmin(admin.ModelAdmin):
-    list_display = ("id", "name")
+    list_display = ("id", "name", "subject_type")
+    list_filter = ("subject_type",)
     search_fields = ("name", "keywords__value")
     ordering = ("name",)
     inlines = [IPKeywordInline]
