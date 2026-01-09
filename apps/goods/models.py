@@ -91,11 +91,12 @@ class Character(models.Model):
         db_index=True,
         verbose_name="角色名",
     )
-    avatar = models.ImageField(
-        upload_to="characters/",
+    avatar = models.CharField(
+        max_length=500,
         null=True,
         blank=True,
         verbose_name="角色头像",
+        help_text="角色头像路径或URL。可以是服务器内的相对路径（如 characters/xxx.jpg）或外部URL（如 https://example.com/avatar.jpg）",
     )
     
     GENDER_CHOICES = (

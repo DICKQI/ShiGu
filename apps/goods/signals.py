@@ -1,3 +1,4 @@
+from django.core.files.storage import default_storage
 from django.db.models.signals import post_delete, pre_save
 from django.dispatch import receiver
 
@@ -8,19 +9,22 @@ from .models import Character, Goods
 def delete_avatar_on_character_delete(sender, instance, **kwargs):
     """
     删除角色时同步删除存储中的头像文件，避免残留。
+    只删除本地文件，不删除外部URL。
     """
     avatar = getattr(instance, "avatar", None)
-    if avatar and avatar.name:
-        storage = avatar.storage
-        name = avatar.name
-        if storage.exists(name):
-            storage.delete(name)
+    if avatar and isinstance(avatar, str):
+        # 判断是否为本地路径（不是http://或https://开头的URL）
+        if not avatar.startswith('http://') and not avatar.startswith('https://'):
+            # 是本地路径，删除文件
+            if default_storage.exists(avatar):
+                default_storage.delete(avatar)
 
 
 @receiver(pre_save, sender=Character)
 def delete_old_avatar_on_update(sender, instance, **kwargs):
     """
     更新角色头像时删除旧文件，避免废弃文件占用存储。
+    只删除本地文件，不删除外部URL。
     """
     if not instance.pk:
         return
@@ -33,11 +37,13 @@ def delete_old_avatar_on_update(sender, instance, **kwargs):
     old_avatar = getattr(old, "avatar", None)
     new_avatar = getattr(instance, "avatar", None)
 
-    if old_avatar and old_avatar.name and old_avatar != new_avatar:
-        storage = old_avatar.storage
-        name = old_avatar.name
-        if storage.exists(name):
-            storage.delete(name)
+    # 只有当旧头像和新头像不同，且旧头像是本地路径时，才删除
+    if old_avatar and isinstance(old_avatar, str) and old_avatar != new_avatar:
+        # 判断是否为本地路径（不是http://或https://开头的URL）
+        if not old_avatar.startswith('http://') and not old_avatar.startswith('https://'):
+            # 是本地路径，删除文件
+            if default_storage.exists(old_avatar):
+                default_storage.delete(old_avatar)
 
 
 @receiver(post_delete, sender=Goods)

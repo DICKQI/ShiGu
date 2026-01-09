@@ -58,7 +58,7 @@
 | `id`     | Integer (PK)        | 自增主键                                  |
 | `ip`     | FK -> `IP`          | 所属作品                                  |
 | `name`   | Char(100), 索引     | 角色名，如：`流萤`                        |
-| `avatar` | Image(URL，可空)    | 角色头像 URL，用于前端列表/角色选择展示  |
+| `avatar` | Char(500，可空)    | 角色头像路径或URL。可以是服务器内的相对路径（如 `characters/xxx.jpg`）或外部URL（如 `https://example.com/avatar.jpg`）。支持文件上传和URL字符串两种方式  |
 | `gender` | Char(10)            | 角色性别：`male`(男) / `female`(女) / `other`(其他)，默认 `female` |
 
 > 约束：同一 `ip` 下 `name` 唯一。
@@ -971,7 +971,10 @@ main_photo: <file>
 - `id`：角色 ID，用于后续筛选参数。
 - `name`：角色名。
 - `ip`：所属IP作品信息（已展开，避免前端二次请求），包含 `subject_type` 字段。
-- `avatar`：角色头像 URL（可选）。
+- `avatar`：角色头像URL或路径。可以是：
+  - 服务器内路径：返回完整URL（如 `http://your-domain.com/media/characters/xxx.jpg`）
+  - 外部URL：直接返回（如 `https://example.com/avatar.jpg`）
+  - `null`：未设置头像
 - `gender`：角色性别：`male`(男) / `female`(女) / `other`(其他)，若不传则默认 `female`。
 
 ---
@@ -1012,13 +1015,24 @@ main_photo: <file>
 
 ##### 请求体（JSON）
 
+**方式一：使用URL字符串（JSON格式）**
+
 ```json
 {
   "name": "流萤",
   "ip_id": 1,
-  "avatar": null,
+  "avatar": "https://example.com/avatar.jpg",
   "gender": "female"
 }
+```
+
+**方式二：文件上传（multipart/form-data格式）**
+
+```
+name: 流萤
+ip_id: 1
+avatar: <file>
+gender: female
 ```
 
 ##### 字段说明
@@ -1027,8 +1041,13 @@ main_photo: <file>
 | -------- | ------ | ---- | ------------------------------------------------------------ |
 | `name`   | string | 是   | 角色名，最大长度100字符，同一IP下必须唯一                    |
 | `ip_id`  | int    | 是   | 所属IP作品ID（使用 `ip_id` 而非 `ip`）                       |
-| `avatar` | string | 否   | 角色头像 URL，如通过表单上传可使用 `multipart/form-data` |
+| `avatar` | string/file | 否   | 角色头像。支持两种方式：<br>1. **URL字符串**：直接传入外部URL（如 `https://example.com/avatar.jpg`）<br>2. **文件上传**：使用 `multipart/form-data` 上传图片文件，后端会自动压缩到约300KB以下并保存到服务器，返回服务器路径的完整URL |
 | `gender` | string | 否   | 角色性别：`male`(男) / `female`(女) / `other`(其他)，不传时后端默认保存为 `female` |
+
+> **头像字段说明**：
+> - 如果上传的是文件：文件会被自动压缩（最大300KB），保存到服务器的 `media/characters/` 目录，接口返回完整URL（如 `http://your-domain.com/media/characters/xxx.jpg`）
+> - 如果传入的是URL字符串：URL会被直接存储，接口直接返回该URL（如 `https://example.com/avatar.jpg`）
+> - 如果传入空字符串或 `null`：不设置头像
 
 ##### 响应
 
@@ -1050,6 +1069,8 @@ main_photo: <file>
 
 ##### 请求体（JSON）
 
+**方式一：使用URL字符串（JSON格式）**
+
 ```json
 {
   "name": "流萤（更新）",
@@ -1058,6 +1079,17 @@ main_photo: <file>
   "gender": "female"
 }
 ```
+
+**方式二：文件上传（multipart/form-data格式）**
+
+```
+name: 流萤（更新）
+ip_id: 1
+avatar: <file>
+gender: female
+```
+
+> **更新说明**：更新时支持与创建时相同的两种头像方式（URL字符串或文件上传）。如果上传新文件，旧的头像文件（仅限本地文件）会被自动删除。
 
 ##### 响应
 
@@ -1327,11 +1359,11 @@ main_photo: <file>
 | `characters`  | array[object]  | 角色对象数组                              |
 | `name`        | string         | 角色名（已解码 HTML 实体，如 `&amp;`）    |
 | `relation`    | string         | 角色与作品关系：如「主角」「配角」「客串」 |
-| `avatar`      | string         | 角色头像 URL（当前可忽略，仅展示用）      |
+| `avatar`      | string         | 角色头像 URL（来自BGM API）。可以在后续创建角色时使用此URL作为角色头像  |
 
 > 注意：
 > - 后端会对 `relation` 做排序，返回结果中**主角在前、配角其后、客串/其他在最后**。
-> - 当前版本不会将头像下载/保存，只透传头像 URL 给前端。
+> - `avatar` 字段包含从 BGM API 获取的头像 URL。在创建角色时，可以将此 URL 传递给后端进行保存（见下方 8.2 接口说明）。
 > - `subject_type` 参数用于在 BGM 中筛选特定类型的作品。例如，当搜索「原神」时，如果只想搜索游戏版本，可以传入 `subject_type: 4`；如果不传，则会搜索所有类型（可能包括动画、游戏等）。
 
 #### 响应体（未找到示例）
@@ -1359,7 +1391,7 @@ main_photo: <file>
 
 #### 请求体（JSON）
 
-**基础示例（不指定作品类型）：**
+**基础示例（不指定作品类型和头像）：**
 
 ```json
 {
@@ -1376,7 +1408,7 @@ main_photo: <file>
 }
 ```
 
-**指定作品类型示例：**
+**指定作品类型和头像URL示例（推荐）：**
 
 ```json
 {
@@ -1384,12 +1416,14 @@ main_photo: <file>
     {
       "ip_name": "崩坏：星穹铁道",
       "character_name": "流萤",
-      "subject_type": 4
+      "subject_type": 4,
+      "avatar": "https://lain.bgm.tv/pic/crt/l/xx/xx/12345.jpg"
     },
     {
       "ip_name": "崩坏：星穹铁道",
       "character_name": "花火",
-      "subject_type": 4
+      "subject_type": 4,
+      "avatar": "https://lain.bgm.tv/pic/crt/l/yy/yy/67890.jpg"
     }
   ]
 }
@@ -1403,11 +1437,17 @@ main_photo: <file>
 | `ip_name`           | string          | 是   | IP 作品名，对应 `IP.name`            |
 | `character_name`    | string          | 是   | 角色名，对应 `Character.name`        |
 | `subject_type`      | integer         | 否   | 作品类型：`1`=书籍, `2`=动画, `3`=音乐, `4`=游戏, `6`=三次元/特摄。可选，创建新 IP 时使用；如果 IP 已存在但 `subject_type` 为空，且提供了此字段，则更新 IP 的 `subject_type` |
+| `avatar`            | string          | 否   | 角色头像 URL。可以是 BGM API 返回的头像 URL（如 `https://lain.bgm.tv/pic/crt/l/xx/xx/12345.jpg`）或其他外部 URL。如果角色已存在且没有头像，会更新头像；如果角色已存在且有头像，则不会覆盖 |
 
 > 约束 / 行为：
 > - 使用模型约束 `unique_together (ip, name)` 保证**同一 IP 下角色名唯一**；
 > - 对于已存在的 (ip, name) 组合，接口会返回 `already_exists`，不会抛异常；
-> - 性别 `gender`、头像 `avatar` 当前由后端默认处理：`gender` 默认 `female`，`avatar` 为空。
+> - 性别 `gender` 当前由后端默认处理：默认 `female`；
+> - 头像 `avatar`：
+>   - 如果创建新角色时提供了 `avatar`，会保存该URL；
+>   - 如果角色已存在且当前没有头像，会更新头像；
+>   - 如果角色已存在且已有头像，则不会覆盖现有头像（保持现有头像不变）；
+>   - 可以从 8.1 接口（搜索角色）返回的结果中获取 `avatar` 字段并传递给此接口。
 > - `subject_type` 字段：如果创建新 IP 时提供了此字段，会在创建 IP 时设置作品类型；如果 IP 已存在但 `subject_type` 为 `null`，且提供了此字段，则更新 IP 的 `subject_type`。
 
 #### 响应体（成功示例）
@@ -1475,11 +1515,41 @@ main_photo: <file>
 ### 8.3 推荐的前端使用流程（简版）
 
 1. 用户在前端输入 IP 名称并点击「搜索 BGM」：
-   - 调用 `POST /api/bgm/search-characters/` 获取候选角色列表。
+   - 调用 `POST /api/bgm/search-characters/` 获取候选角色列表（包含角色名、关系、头像URL等信息）。
 2. 前端展示从 BGM 返回的角色列表，用户勾选需要导入的角色：
-   - 将勾选结果映射为 `{ ip_name, character_name }` 数组。
+   - 将勾选结果映射为包含 `ip_name`、`character_name`、`avatar`（可选）的数组。
+   - **推荐**：将 BGM 返回的 `avatar` URL 也一起传递，这样创建的角色会自动包含头像。
 3. 用户点击「确认导入」：
-   - 调用 `POST /api/bgm/create-characters/`；
+   - 调用 `POST /api/bgm/create-characters/`，传递角色信息（包含头像URL）；
    - 导入完成后，前端可以根据返回的 `ip_id` / `character_id` 刷新本地 `IP` / `Character` 列表或直接追加。
+
+> **完整示例**：
+> 
+> 假设从 8.1 接口返回的角色列表为：
+> ```json
+> {
+>   "ip_name": "崩坏：星穹铁道",
+>   "characters": [
+>     {
+>       "name": "流萤",
+>       "relation": "主角",
+>       "avatar": "https://lain.bgm.tv/pic/crt/l/xx/xx/12345.jpg"
+>     }
+>   ]
+> }
+> ```
+> 
+> 用户勾选后，传递给 8.2 接口的数据应为：
+> ```json
+> {
+>   "characters": [
+>     {
+>       "ip_name": "崩坏：星穹铁道",
+>       "character_name": "流萤",
+>       "avatar": "https://lain.bgm.tv/pic/crt/l/xx/xx/12345.jpg"
+>     }
+>   ]
+> }
+> ```
 
 

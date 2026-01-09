@@ -367,6 +367,7 @@ def bgm_create_characters(request):
         ip_name = char_data['ip_name']
         character_name = char_data['character_name']
         subject_type = char_data.get('subject_type')  # 可选字段
+        avatar = char_data.get('avatar')  # 可选字段，头像URL
         
         try:
             # 获取或创建IP
@@ -383,8 +384,15 @@ def bgm_create_characters(request):
             # 获取或创建角色（使用unique_together约束避免重复）
             character_obj, char_created = Character.objects.get_or_create(
                 ip=ip_obj,
-                name=character_name
+                name=character_name,
+                defaults={'avatar': avatar.strip() if avatar and avatar.strip() else None} if avatar else {}
             )
+            
+            # 如果角色已存在，但提供了头像URL且角色当前没有头像，则更新头像
+            if not char_created and avatar and avatar.strip():
+                if not character_obj.avatar:
+                    character_obj.avatar = avatar.strip()
+                    character_obj.save(update_fields=['avatar'])
             
             if char_created:
                 created_count += 1
