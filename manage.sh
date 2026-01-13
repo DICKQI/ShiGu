@@ -55,8 +55,8 @@ check_command() {
 
 # 检查gunicorn是否安装
 check_gunicorn() {
-    if ! python -c "import gunicorn" 2>/dev/null; then
-        print_error "Gunicorn 未安装，请先安装：pip install gunicorn"
+    if ! python3 -c "import gunicorn" 2>/dev/null; then
+        print_error "Gunicorn 未安装，请先安装：pip3 install gunicorn"
         exit 1
     fi
 }
