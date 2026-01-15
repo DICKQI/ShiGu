@@ -7,7 +7,7 @@ from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 
 from .bgm_service import search_ip_characters
-from .models import Category, Character, Goods, IP
+from .models import Category, Character, Goods, GuziImage, IP
 from .serializers import (
     BGMCreateCharactersRequestSerializer,
     BGMSearchRequestSerializer,
@@ -163,6 +163,199 @@ class GoodsViewSet(viewsets.ModelViewSet):
             instance, context=self.get_serializer_context()
         )
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="upload-additional-photos",
+        parser_classes=[MultiPartParser, FormParser],
+    )
+    def upload_additional_photos(self, request, pk=None):
+        """
+        独立上传/更新附加图片接口，使用 multipart/form-data，支持一次上传多张图片。
+        字段名：
+        - additional_photos（文件数组，可选）：可一次上传多张图片
+        - photo_ids（整数数组，可选）：图片ID数组，用于更新已有图片
+        - label（字符串，可选）：为本次上传的所有图片添加统一标签，例如："背板细节"、"瑕疵点"等
+        
+        使用场景：
+        1. 创建新图片：只提供 additional_photos（不提供 photo_ids）
+        2. 更新图片和标签：同时提供 additional_photos 和 photo_ids（数量必须一致）
+        3. 只更新标签：只提供 photo_ids 和 label（不提供 additional_photos）
+        """
+        instance = self.get_object()
+        additional_photos = request.FILES.getlist("additional_photos")
+        photo_ids = request.data.getlist("photo_ids")  # 图片ID数组，用于更新
+        label = request.data.get("label", "").strip()
+
+        # 如果既没有提供图片文件，也没有提供 photo_ids，则返回错误
+        if not additional_photos and not photo_ids:
+            return Response(
+                {"detail": "请提供 additional_photos 文件或 photo_ids 参数"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # 如果同时提供了 photo_ids 和 additional_photos，数量必须一致
+        if photo_ids and additional_photos and len(photo_ids) != len(additional_photos):
+            return Response(
+                {"detail": "photo_ids 数量必须与 additional_photos 数量一致"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # 情况1：只更新 label（提供 photo_ids，但不提供图片文件）
+        if photo_ids and not additional_photos:
+            updated_images = []
+            for photo_id_str in photo_ids:
+                try:
+                    photo_id = int(photo_id_str)
+                    guzi_image = GuziImage.objects.get(id=photo_id, guzi=instance)
+                    # 只更新标签
+                    if label:
+                        guzi_image.label = label
+                    else:
+                        guzi_image.label = None
+                    guzi_image.save()
+                    updated_images.append(guzi_image)
+                except (GuziImage.DoesNotExist, ValueError):
+                    return Response(
+                        {"detail": f"图片 ID {photo_id_str} 不存在或不属于该谷子"},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+            
+            # 更新谷子的 updated_at 时间戳
+            instance.save(update_fields=["updated_at"])
+            serializer = GoodsDetailSerializer(
+                instance, context=self.get_serializer_context()
+            )
+            return Response(serializer.data, status=status.HTTP_200_OK)
+
+        # 情况2：创建新图片或同时更新图片和 label
+        updated_images = []
+        for idx, photo in enumerate(additional_photos):
+            compressed = compress_image(photo, max_size_kb=300)
+            image_file = compressed or photo
+            
+            # 如果提供了 photo_id，则更新；否则创建新图片
+            if photo_ids and idx < len(photo_ids):
+                try:
+                    photo_id = int(photo_ids[idx])
+                    guzi_image = GuziImage.objects.get(id=photo_id, guzi=instance)
+                    # 更新图片和标签
+                    guzi_image.image = image_file
+                    if label:
+                        guzi_image.label = label
+                    else:
+                        guzi_image.label = None
+                    guzi_image.save()
+                    updated_images.append(guzi_image)
+                except (GuziImage.DoesNotExist, ValueError):
+                    return Response(
+                        {"detail": f"图片 ID {photo_ids[idx]} 不存在或不属于该谷子"},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+            else:
+                # 创建新图片
+                guzi_image = GuziImage.objects.create(
+                    guzi=instance,
+                    image=image_file,
+                    label=label if label else None,
+                )
+                updated_images.append(guzi_image)
+
+        # 更新谷子的 updated_at 时间戳
+        instance.save(update_fields=["updated_at"])
+
+        serializer = GoodsDetailSerializer(
+            instance, context=self.get_serializer_context()
+        )
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @action(
+        detail=True,
+        methods=["delete"],
+        url_path="additional-photos/(?P<photo_id>[^/.]+)",
+    )
+    def delete_additional_photo(self, request, pk=None, photo_id=None):
+        """
+        删除单张附加图片接口
+        URL: /api/goods/{id}/additional-photos/{photo_id}/
+        """
+        instance = self.get_object()
+        try:
+            photo_id = int(photo_id)
+            guzi_image = GuziImage.objects.get(id=photo_id, guzi=instance)
+            guzi_image.delete()
+        except (GuziImage.DoesNotExist, ValueError):
+            return Response(
+                {"detail": "附加图片不存在或不属于该谷子"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # 更新谷子的 updated_at 时间戳
+        instance.save(update_fields=["updated_at"])
+
+        serializer = GoodsDetailSerializer(
+            instance, context=self.get_serializer_context()
+        )
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @action(
+        detail=True,
+        methods=["delete"],
+        url_path="additional-photos",
+    )
+    def delete_additional_photos(self, request, pk=None):
+        """
+        批量删除附加图片接口
+        URL: /api/goods/{id}/additional-photos/?photo_ids=10,11,12
+        查询参数：photo_ids（整数数组，必填），多个ID用逗号分隔
+        """
+        instance = self.get_object()
+        photo_ids_param = request.query_params.get("photo_ids", "").strip()
+
+        if not photo_ids_param:
+            return Response(
+                {"detail": "请提供 photo_ids 查询参数，多个ID用逗号分隔，例如：?photo_ids=10,11,12"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            # 解析 photo_ids
+            photo_ids = [int(pid.strip()) for pid in photo_ids_param.split(",") if pid.strip()]
+            if not photo_ids:
+                return Response(
+                    {"detail": "photo_ids 参数格式错误，请使用逗号分隔的整数ID"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            # 查询并删除图片
+            guzi_images = GuziImage.objects.filter(id__in=photo_ids, guzi=instance)
+            deleted_count = guzi_images.count()
+
+            # 检查是否有不存在的图片
+            if deleted_count != len(photo_ids):
+                found_ids = set(guzi_images.values_list("id", flat=True))
+                missing_ids = [pid for pid in photo_ids if pid not in found_ids]
+                return Response(
+                    {"detail": f"以下图片ID不存在或不属于该谷子: {missing_ids}"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            guzi_images.delete()
+
+            # 更新谷子的 updated_at 时间戳
+            instance.save(update_fields=["updated_at"])
+
+            serializer = GoodsDetailSerializer(
+                instance, context=self.get_serializer_context()
+            )
+            return Response(serializer.data, status=status.HTTP_200_OK)
+
+        except ValueError:
+            return Response(
+                {"detail": "photo_ids 参数格式错误，请使用逗号分隔的整数ID"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
 
 class IPViewSet(viewsets.ModelViewSet):

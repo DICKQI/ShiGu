@@ -649,6 +649,135 @@ main_photo: <file>
 
 响应：返回更新后的谷子详情（同 4.2）。
 
+#### 4.3.2 附加图片上传 / 更新接口
+
+- **URL**：`POST /api/goods/{id}/upload-additional-photos/`
+- **请求方式**：`multipart/form-data`
+- **字段**：
+  - `additional_photos`（文件数组，可选）：可一次上传多张图片
+  - `photo_ids`（整数数组，可选）：图片ID数组，用于更新已有图片
+  - `label`（字符串，可选）：为本次上传的所有图片添加统一标签，例如："背板细节"、"瑕疵点"等
+
+**使用场景**：
+
+1. **创建新图片**：只提供 `additional_photos`（不提供 `photo_ids`）
+2. **更新图片和标签**：同时提供 `additional_photos` 和 `photo_ids`（数量必须一致）
+3. **只更新标签**：只提供 `photo_ids` 和 `label`（不提供 `additional_photos`）
+
+**说明**：
+- 至少需要提供 `additional_photos` 或 `photo_ids` 之一
+- 如果同时提供 `photo_ids` 和 `additional_photos`，数量必须一致
+- 后台会自动压缩每张图片到约 300KB 以下（若需要）
+- 如果提供了 `label`，则本次操作的所有图片都会使用该标签
+- 如果不提供 `label`，则图片标签会被设置为空（更新模式下）
+
+##### 场景1：创建新图片（form-data，上传多张图片）
+
+```
+additional_photos: <file1>
+additional_photos: <file2>
+additional_photos: <file3>
+label: "背板细节"
+```
+
+或者只上传单张图片：
+
+```
+additional_photos: <file>
+label: "瑕疵点"
+```
+
+##### 场景2：更新图片和标签（form-data）
+
+假设已有图片的 ID 为 10、11、12，要更新这些图片：
+
+```
+additional_photos: <new_file1>
+additional_photos: <new_file2>
+additional_photos: <new_file3>
+photo_ids: 10
+photo_ids: 11
+photo_ids: 12
+label: "更新后的标签"
+```
+
+**注意**：
+- `photo_ids` 数组中的每个 ID 必须对应 `additional_photos` 数组中相同位置的图片文件
+- 例如：`photo_ids[0]` 对应 `additional_photos[0]`，`photo_ids[1]` 对应 `additional_photos[1]`，以此类推
+- 如果提供的 `photo_id` 不存在或不属于该谷子，会返回错误
+
+##### 场景3：只更新标签（form-data）
+
+假设已有图片的 ID 为 10、11、12，只想更新这些图片的标签，不修改图片文件：
+
+```
+photo_ids: 10
+photo_ids: 11
+photo_ids: 12
+label: "新的标签"
+```
+
+或者清空标签（不提供 label 或提供空字符串）：
+
+```
+photo_ids: 10
+photo_ids: 11
+```
+
+**注意**：
+- 只更新标签时，不需要提供 `additional_photos` 文件
+- 如果提供了 `label`，所有指定的图片都会更新为该标签
+- 如果不提供 `label` 或提供空字符串，标签会被清空
+
+响应：返回更新后的谷子详情（同 4.2），包含所有附加图片信息。
+
+#### 4.3.3 删除附加图片接口
+
+支持两种删除方式：删除单张图片或批量删除多张图片。
+
+##### 方式1：删除单张附加图片
+
+- **URL**：`DELETE /api/goods/{id}/additional-photos/{photo_id}/`
+- **说明**：删除指定ID的附加图片
+- **参数**：
+  - `{id}`：谷子ID（路径参数）
+  - `{photo_id}`：附加图片ID（路径参数）
+
+**示例**：
+
+删除 ID 为 10 的附加图片：
+```
+DELETE /api/goods/abc123/additional-photos/10/
+```
+
+**响应**：
+- 成功：返回更新后的谷子详情（同 4.2），包含所有附加图片信息
+- 失败：`404 Not Found`（图片不存在或不属于该谷子）
+
+##### 方式2：批量删除附加图片
+
+- **URL**：`DELETE /api/goods/{id}/additional-photos/?photo_ids=10,11,12`
+- **说明**：批量删除多张附加图片
+- **查询参数**：
+  - `photo_ids`（字符串，必填）：多个图片ID，用逗号分隔
+
+**示例**：
+
+批量删除 ID 为 10、11、12 的附加图片：
+```
+DELETE /api/goods/abc123/additional-photos/?photo_ids=10,11,12
+```
+
+**响应**：
+- 成功：返回更新后的谷子详情（同 4.2），包含所有附加图片信息
+- 失败：
+  - `400 Bad Request`：如果某些图片ID不存在或不属于该谷子，会返回错误信息
+  - `400 Bad Request`：如果 `photo_ids` 参数格式错误
+
+**注意**：
+- 批量删除时，如果提供的图片ID中有任何一个不存在或不属于该谷子，整个操作会失败并返回错误
+- 删除图片后，存储中的图片文件会根据 Django 的配置自动处理（如果配置了信号处理器）
+
 ### 4.4 删除谷子
 
 - **URL**：`DELETE /api/goods/{id}/`
