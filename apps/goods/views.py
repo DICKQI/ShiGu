@@ -1,6 +1,7 @@
 from django.db.models import Count
+from django_filters import FilterSet, ModelMultipleChoiceFilter, NumberFilter, CharFilter, BaseInFilter
 from django_filters.rest_framework import DjangoFilterBackend
-from rest_framework import filters, status, viewsets
+from rest_framework import filters as drf_filters, status, viewsets
 from rest_framework.decorators import action, api_view
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
@@ -20,6 +21,42 @@ from .serializers import (
     IPSimpleSerializer,
 )
 from .utils import compress_image
+
+
+class GoodsFilter(FilterSet):
+    """谷子过滤集，正确处理多对多字段characters"""
+    
+    ip = NumberFilter(field_name="ip", lookup_expr="exact")
+    category = NumberFilter(field_name="category", lookup_expr="exact")
+    location = NumberFilter(field_name="location", lookup_expr="exact")
+    status = CharFilter(field_name="status", lookup_expr="exact")
+    status__in = BaseInFilter(field_name="status", lookup_expr="in")
+    
+    # 处理多对多字段characters：exact 和 in
+    # 支持单数形式character和复数形式characters
+    character = ModelMultipleChoiceFilter(
+        field_name="characters",
+        queryset=Character.objects.all(),
+        conjoined=False,  # False表示"包含任意指定角色"（OR），True表示"包含所有指定角色"（AND）
+        help_text="角色ID，例如：?character=5 或 ?character=5,6（包含任意指定角色的谷子）"
+    )
+    characters = ModelMultipleChoiceFilter(
+        field_name="characters",
+        queryset=Character.objects.all(),
+        conjoined=False,  # False表示"包含任意指定角色"（OR），True表示"包含所有指定角色"（AND）
+        help_text="角色ID，例如：?characters=5 或 ?characters=5,6（包含任意指定角色的谷子）"
+    )
+    # 为了兼容characters__in参数格式
+    characters__in = ModelMultipleChoiceFilter(
+        field_name="characters",
+        queryset=Character.objects.all(),
+        conjoined=False,
+        help_text="角色ID列表（逗号分隔），例如：?characters__in=5,6"
+    )
+    
+    class Meta:
+        model = Goods
+        fields = ["ip", "category", "location", "status", "characters"]
 
 
 class GoodsViewSet(viewsets.ModelViewSet):
@@ -45,20 +82,11 @@ class GoodsViewSet(viewsets.ModelViewSet):
     # 过滤 & 搜索
     filter_backends = (
         DjangoFilterBackend,
-        filters.SearchFilter,
+        drf_filters.SearchFilter,
     )
 
-    # 复合过滤：/api/goods/?ip=1&characters=5&category=2&status=in_cabinet
-    # 支持多角色筛选：/api/goods/?characters__in=5,6 表示包含任意角色的谷子
-    # 支持多状态筛选：/api/goods/?status__in=in_cabinet,sold
-    filterset_fields = {
-        "ip": ["exact"],
-        "characters": ["exact", "in"],  # exact: 精确匹配，in: 包含任意指定角色
-        "category": ["exact"],
-        # status 支持 exact 和 in，in 用 status__in 参数，值用英文逗号分隔
-        "status": ["exact", "in"],
-        "location": ["exact"],
-    }
+    # 使用自定义FilterSet来正确处理多对多字段characters
+    filterset_class = GoodsFilter
 
     # 轻量搜索：
     # - 对 Goods.name 走索引（已在模型上 db_index=True）
@@ -371,7 +399,7 @@ class IPViewSet(viewsets.ModelViewSet):
     - characters: 获取指定IP下的所有角色列表（/api/ips/{id}/characters/）
     """
 
-    filter_backends = (DjangoFilterBackend, filters.SearchFilter)
+    filter_backends = (DjangoFilterBackend, drf_filters.SearchFilter)
     search_fields = ("name", "keywords__value")
     filterset_fields = {
         "name": ["exact", "icontains"],
@@ -421,7 +449,7 @@ class CharacterViewSet(viewsets.ModelViewSet):
 
     queryset = Character.objects.all().select_related("ip").order_by("created_at")
     serializer_class = CharacterSimpleSerializer
-    filter_backends = (DjangoFilterBackend, filters.SearchFilter)
+    filter_backends = (DjangoFilterBackend, drf_filters.SearchFilter)
     search_fields = ("name", "ip__name", "ip__keywords__value")
     filterset_fields = {
         "ip": ["exact"],
@@ -443,7 +471,7 @@ class CategoryViewSet(viewsets.ModelViewSet):
 
     queryset = Category.objects.all().order_by("created_at")
     serializer_class = CategorySimpleSerializer
-    filter_backends = (DjangoFilterBackend, filters.SearchFilter)
+    filter_backends = (DjangoFilterBackend, drf_filters.SearchFilter)
     search_fields = ("name",)
     filterset_fields = {
         "name": ["exact", "icontains"],
