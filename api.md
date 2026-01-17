@@ -4,7 +4,7 @@
 
 说明：
 - 所有接口默认返回 `application/json`。
-- 未特殊说明的分页接口均使用 DRF 默认分页（后续可按需改为 cursor 分页）。
+- 谷子列表接口（`GET /api/goods/`）已启用分页，返回格式包含总数、当前页码、上一页/下一页页码等信息。其他列表接口暂未启用分页。
 - 图片字段为 URL 字符串，真实存储可对接本地或云存储（OSS/COS）。
 
 ---
@@ -440,7 +440,8 @@ GET /api/location/nodes/2/goods/?include_children=true
 | `status__in`  | string | **多状态过滤**：逗号分隔的状态列表，如：`in_cabinet,sold`                                   |
 | `location`    | int    | 位置节点 ID，过滤收纳在某一具体节点下的谷子                                                 |
 | `search`      | string | 轻量模糊搜索：会同时在 `Goods.name`、`IP.name`、`IPKeyword.value` 上匹配    |
-| `page`        | int    | 分页页码（DRF 默认）                                                                         |
+| `page`        | int    | 分页页码，从 1 开始，例如 `?page=1` 表示第一页                                               |
+| `page_size`   | int    | 每页数量，默认 18 条，最大 100 条，例如 `?page_size=50`                                      |
 
 > 示例 1：检索"星铁 + 流萤 + 吧唧，当前在馆"的所有谷子：
 >
@@ -456,10 +457,14 @@ GET /api/location/nodes/2/goods/?include_children=true
 
 #### 响应示例（分页）
 
+**第一页示例**：
+
 ```json
 {
-  "count": 2,
-  "next": null,
+  "count": 45,
+  "page": 1,
+  "page_size": 18,
+  "next": 2,
   "previous": null,
   "results": [
     {
@@ -507,11 +512,51 @@ GET /api/location/nodes/2/goods/?include_children=true
 }
 ```
 
-**字段说明**：
+**中间页示例**（例如第 2 页）：
+
+```json
+{
+  "count": 45,
+  "page": 2,
+  "page_size": 18,
+  "next": 3,
+  "previous": 1,
+  "results": [...]
+}
+```
+
+**最后一页示例**（例如第 3 页）：
+
+```json
+{
+  "count": 45,
+  "page": 3,
+  "page_size": 18,
+  "next": null,
+  "previous": 2,
+  "results": [...]
+}
+```
+
+**分页字段说明**：
+- `count`：总记录数（整数）。
+- `page`：当前页码（整数，从 1 开始）。
+- `page_size`：每页数量（整数，默认 18，最大 100）。
+- `next`：下一页页码（整数），如果没有下一页则为 `null`。
+- `previous`：上一页页码（整数），如果没有上一页则为 `null`。
+- `results`：当前页的数据列表（数组）。
+
+**数据字段说明**：
 - `id`：谷子 UUID，后续详情/编辑都用此 ID。
 - `ip` / `characters` / `category`：已展开为简单对象，避免前端再二次请求。`characters` 为数组，可包含多个角色。
 - `location_path`：人类可读的完整路径（前端直接展示即可）。
 - `main_photo`：主图 URL，可直接用作列表缩略图（后续可以替换为缩略图 URL）。
+
+**使用示例**：
+- 获取第一页（默认每页 18 条）：`GET /api/goods/`
+- 获取第二页：`GET /api/goods/?page=2`
+- 自定义每页数量：`GET /api/goods/?page=1&page_size=50`
+- 组合筛选和分页：`GET /api/goods/?ip=1&character=5&page=2&page_size=30`
 
 ---
 

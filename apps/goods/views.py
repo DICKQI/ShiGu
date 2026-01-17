@@ -4,6 +4,7 @@ from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import filters as drf_filters, status, viewsets
 from rest_framework.decorators import action, api_view
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
+from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 
@@ -21,6 +22,55 @@ from .serializers import (
     IPSimpleSerializer,
 )
 from .utils import compress_image
+
+
+class GoodsPagination(PageNumberPagination):
+    """
+    谷子列表分页类
+    返回格式：
+    {
+        "count": 总数,
+        "page": 当前页码,
+        "page_size": 每页数量,
+        "next": 下一页页码（如果没有则为null）,
+        "previous": 上一页页码（如果没有则为null）,
+        "results": [...]
+    }
+    """
+    page_size = 18  # 默认每页18条
+    page_size_query_param = 'page_size'  # 允许客户端通过 ?page_size=xxx 自定义每页数量
+    max_page_size = 100  # 最大每页数量限制
+    
+    def get_paginated_response(self, data):
+        """
+        自定义分页响应格式
+        """
+        return Response({
+            'count': self.page.paginator.count,  # 总数
+            'page': self.page.number,  # 当前页码
+            'page_size': self.page_size,  # 每页数量
+            'next': self.get_next_page_number(),  # 下一页页码
+            'previous': self.get_previous_page_number(),  # 上一页页码
+            'results': data  # 数据列表
+        })
+    
+    def get_next_page_number(self):
+        """
+        获取下一页页码，如果没有则返回 None
+        """
+        if not self.page.has_next():
+            return None
+        return self.page.next_page_number()
+    
+    def get_previous_page_number(self):
+        """
+        获取上一页页码，如果没有则返回 None
+        """
+        if not self.page.has_previous():
+            return None
+        return self.page.previous_page_number()
+
+
 class GoodsFilter(FilterSet):
     """谷子过滤集，正确处理多对多字段characters"""
     
@@ -47,7 +97,7 @@ class GoodsViewSet(viewsets.ModelViewSet):
     """
     谷子检索核心接口。
 
-    - list: 高性能检索列表（瘦身字段），支持多维过滤 & 搜索。
+    - list: 高性能检索列表（瘦身字段），支持多维过滤 & 搜索，支持分页。
     - retrieve: 详情接口，返回完整信息及补充图片。
     """
 
@@ -80,6 +130,9 @@ class GoodsViewSet(viewsets.ModelViewSet):
         "ip__name",
         "ip__keywords__value",
     )
+
+    # 分页配置
+    pagination_class = GoodsPagination
 
     # 限流：专门给检索接口一个 scope，具体速率在 settings.REST_FRAMEWORK.THROTTLE_RATES 中配置
     throttle_classes = [ScopedRateThrottle]
