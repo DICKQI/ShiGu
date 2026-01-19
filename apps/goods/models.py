@@ -130,9 +130,38 @@ class Character(models.Model):
 class Category(models.Model):
     """
     品类表，例如：吧唧、色纸、立牌、挂件
+    采用自关联设计，支持无限级层级。
     """
 
-    name = models.CharField(max_length=50, unique=True, verbose_name="类型名")
+    name = models.CharField(max_length=50, verbose_name="类型名")
+    parent = models.ForeignKey(
+        "self",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="children",
+        verbose_name="父级品类",
+    )
+    path_name = models.CharField(
+        max_length=200,
+        db_index=True,
+        null=True,
+        blank=True,
+        verbose_name="完整路径",
+        help_text="冗余字段，例如：周边/吧唧/圆形吧唧",
+    )
+    color_tag = models.CharField(
+        max_length=20,
+        null=True,
+        blank=True,
+        verbose_name="颜色标签",
+        help_text="用于UI展示的颜色标识，例如：#FF5733",
+    )
+    order = models.IntegerField(
+        default=0,
+        verbose_name="排序值",
+        help_text="控制同级节点的展示顺序，值越小越靠前",
+    )
     created_at = models.DateTimeField(
         auto_now_add=True,
         null=True,
@@ -143,10 +172,10 @@ class Category(models.Model):
     class Meta:
         verbose_name = "品类"
         verbose_name_plural = "品类"
-        ordering = ["created_at"]
+        ordering = ["order", "id"]
 
     def __str__(self):
-        return self.name
+        return self.path_name or self.name
 
 
 class Goods(models.Model):

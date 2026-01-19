@@ -1,5 +1,11 @@
 from django.db.models import Count
-from django_filters import FilterSet, ModelMultipleChoiceFilter, NumberFilter, CharFilter, BaseInFilter
+from django_filters import (
+    FilterSet,
+    ModelMultipleChoiceFilter,
+    NumberFilter,
+    CharFilter,
+    BaseInFilter,
+)
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import filters as drf_filters, status, viewsets
 from rest_framework.decorators import action, api_view
@@ -14,7 +20,9 @@ from .serializers import (
     BGMCreateCharactersRequestSerializer,
     BGMSearchRequestSerializer,
     BGMSearchResponseSerializer,
+    CategoryDetailSerializer,
     CategorySimpleSerializer,
+    CategoryTreeSerializer,
     CharacterSimpleSerializer,
     GoodsDetailSerializer,
     GoodsListSerializer,
@@ -75,7 +83,8 @@ class GoodsFilter(FilterSet):
     """谷子过滤集，正确处理多对多字段characters"""
     
     ip = NumberFilter(field_name="ip", lookup_expr="exact")
-    category = NumberFilter(field_name="category", lookup_expr="exact")
+    # 树形品类筛选：?category=2 （筛选该品类及其所有子品类下的谷子）
+    category = NumberFilter(method="filter_category_tree")
     location = NumberFilter(field_name="location", lookup_expr="exact")
     status = CharFilter(field_name="status", lookup_expr="exact")
     status__in = BaseInFilter(field_name="status", lookup_expr="in")
@@ -91,6 +100,38 @@ class GoodsFilter(FilterSet):
     class Meta:
         model = Goods
         fields = ["ip", "category", "location", "status", "character"]
+
+    def _get_category_descendant_ids(self, category: Category) -> list[int]:
+        """
+        获取指定品类的所有后代品类ID（包含自身）。
+        由于品类层级通常不深，这里用递归即可。
+        """
+        ids: list[int] = []
+
+        def dfs(node: Category):
+            ids.append(node.id)
+            for child in node.children.all():
+                dfs(child)
+
+        # 预加载 children，避免递归过程中 N+1
+        category = Category.objects.prefetch_related("children").get(pk=category.pk)
+        dfs(category)
+        return ids
+
+    def filter_category_tree(self, queryset, name, value):
+        """
+        树形品类筛选：
+        - ?category=<id>：返回该品类及其所有子品类下的谷子
+        """
+        if not value:
+            return queryset
+        try:
+            category = Category.objects.get(pk=value)
+        except Category.DoesNotExist:
+            return queryset.none()
+
+        ids = self._get_category_descendant_ids(category)
+        return queryset.filter(category_id__in=ids)
 
 
 class GoodsViewSet(viewsets.ModelViewSet):
@@ -496,23 +537,90 @@ class CharacterViewSet(viewsets.ModelViewSet):
 
 class CategoryViewSet(viewsets.ModelViewSet):
     """
-    品类CRUD接口。
+    品类CRUD接口，支持树形结构。
 
-    - list: 获取所有品类列表
+    - list: 获取所有品类列表（支持按父节点过滤）
     - retrieve: 获取单个品类详情
-    - create: 创建新品类
+    - create: 创建新品类（支持树形结构）
     - update: 更新品类
     - partial_update: 部分更新品类
-    - destroy: 删除品类
+    - destroy: 删除品类（会级联删除所有子节点）
+    - tree: 获取品类树（扁平列表，前端组装为树）
     """
 
-    queryset = Category.objects.all().order_by("created_at")
-    serializer_class = CategorySimpleSerializer
+    queryset = Category.objects.all().order_by("order", "id")
     filter_backends = (DjangoFilterBackend, drf_filters.SearchFilter)
-    search_fields = ("name",)
+    search_fields = ("name", "path_name")
     filterset_fields = {
         "name": ["exact", "icontains"],
+        "parent": ["exact", "isnull"],
     }
+    
+    def get_queryset(self):
+        """优化查询，预加载父节点和子节点"""
+        return Category.objects.select_related("parent").prefetch_related("children")
+    
+    def get_serializer_class(self):
+        """根据操作类型选择序列化器"""
+        if self.action in ("create", "update", "partial_update"):
+            return CategoryDetailSerializer
+        if self.action == "tree":
+            return CategoryTreeSerializer
+        return CategorySimpleSerializer
+    
+    def get_all_descendants(self, category):
+        """
+        递归获取品类的所有后代节点（包括子节点、子节点的子节点等）
+        返回包含该节点及其所有后代的列表
+        """
+        descendants = [category]
+        children = category.children.all()
+        for child in children:
+            descendants.extend(self.get_all_descendants(child))
+        return descendants
+    
+    @action(detail=False, methods=["get"], url_path="tree")
+    def tree(self, request):
+        """
+        获取品类树一次性下发接口
+        URL: /api/categories/tree/
+        
+        返回所有节点的扁平列表（带 parent），前端在内存中组装为树。
+        """
+        queryset = self.filter_queryset(self.get_queryset())
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+    
+    def destroy(self, request, *args, **kwargs):
+        """
+        删除品类时：
+        1. 递归获取所有子节点（包括子节点的子节点）
+        2. 检查是否有商品关联到这些品类（包括子节点）
+        3. 如果有商品关联，返回错误
+        4. 删除根节点（由于 CASCADE，删除父节点会自动删除所有子节点）
+        """
+        from django.db import transaction
+        
+        instance = self.get_object()
+        
+        # 获取所有要删除的节点（包括当前节点及其所有后代）
+        nodes_to_delete = self.get_all_descendants(instance)
+        node_ids = [node.id for node in nodes_to_delete]
+        
+        # 检查是否有商品关联到这些品类
+        goods_count = Goods.objects.filter(category_id__in=node_ids).count()
+        if goods_count > 0:
+            return Response(
+                {"detail": f"无法删除：有 {goods_count} 个商品关联到此品类或其子品类，请先解除关联"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        
+        # 删除根节点（由于 parent 字段使用了 on_delete=models.CASCADE，
+        # 删除父节点时，Django 会自动删除所有子节点）
+        with transaction.atomic():
+            instance.delete()
+        
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 # ==================== BGM API 视图 ====================

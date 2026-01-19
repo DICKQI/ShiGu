@@ -29,6 +29,10 @@ class CharacterAdmin(admin.ModelAdmin):
 
 @admin.register(Category)
 class CategoryAdmin(admin.ModelAdmin):
+    list_display = ("name", "parent", "path_name", "color_tag", "order", "created_at")
+    list_filter = ("parent", "created_at")
+    search_fields = ("name", "path_name")
+    autocomplete_fields = ("parent",)
     list_display = ("id", "name")
     search_fields = ("name",)
     ordering = ("name",)
