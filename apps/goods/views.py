@@ -20,6 +20,7 @@ from .serializers import (
     BGMCreateCharactersRequestSerializer,
     BGMSearchRequestSerializer,
     BGMSearchResponseSerializer,
+    CategoryBatchUpdateOrderSerializer,
     CategoryDetailSerializer,
     CategorySimpleSerializer,
     CategoryTreeSerializer,
@@ -546,6 +547,7 @@ class CategoryViewSet(viewsets.ModelViewSet):
     - partial_update: 部分更新品类
     - destroy: 删除品类（会级联删除所有子节点）
     - tree: 获取品类树（扁平列表，前端组装为树）
+    - batch_update_order: 批量更新品类排序（用于拖拽排序等功能）
     """
 
     queryset = Category.objects.all().order_by("order", "id")
@@ -590,6 +592,65 @@ class CategoryViewSet(viewsets.ModelViewSet):
         queryset = self.filter_queryset(self.get_queryset())
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
+    
+    @action(detail=False, methods=["post"], url_path="batch-update-order")
+    def batch_update_order(self, request):
+        """
+        批量更新品类排序接口
+        URL: /api/categories/batch-update-order/
+        
+        用于前端通过拖拽等方式调整品类顺序后，批量更新排序值。
+        支持同时更新多个品类的order字段。
+        """
+        from django.db import transaction
+        
+        serializer = CategoryBatchUpdateOrderSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        items = serializer.validated_data['items']
+        
+        # 验证所有品类ID是否存在
+        category_ids = [item['id'] for item in items]
+        existing_categories = Category.objects.filter(id__in=category_ids)
+        existing_ids = set(existing_categories.values_list('id', flat=True))
+        
+        missing_ids = set(category_ids) - existing_ids
+        if missing_ids:
+            return Response(
+                {"detail": f"以下品类ID不存在: {sorted(missing_ids)}"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        
+        # 批量更新排序值（使用事务保证原子性）
+        try:
+            with transaction.atomic():
+                # 创建字典以便快速查找
+                category_dict = {cat.id: cat for cat in existing_categories}
+                
+                # 更新每个品类的order值
+                updated_categories = []
+                for item in items:
+                    category = category_dict[item['id']]
+                    category.order = item['order']
+                    category.save(update_fields=['order'])
+                    updated_categories.append(category)
+                
+                # 返回更新后的品类列表（按新的order排序）
+                updated_ids = [cat.id for cat in updated_categories]
+                result_categories = Category.objects.filter(id__in=updated_ids).order_by('order', 'id')
+                result_serializer = CategorySimpleSerializer(result_categories, many=True)
+                
+                return Response({
+                    "detail": f"成功更新 {len(updated_categories)} 个品类的排序",
+                    "updated_count": len(updated_categories),
+                    "categories": result_serializer.data
+                }, status=status.HTTP_200_OK)
+                
+        except Exception as e:
+            return Response(
+                {"detail": f"更新排序失败: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
     
     def destroy(self, request, *args, **kwargs):
         """

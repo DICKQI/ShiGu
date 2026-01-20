@@ -246,6 +246,33 @@ class CategoryTreeSerializer(serializers.ModelSerializer):
         fields = ("id", "name", "parent", "path_name", "color_tag", "order")
 
 
+class CategoryOrderItemSerializer(serializers.Serializer):
+    """品类排序项序列化器（用于批量更新排序）"""
+    id = serializers.IntegerField(help_text="品类ID")
+    order = serializers.IntegerField(help_text="排序值，值越小越靠前")
+
+
+class CategoryBatchUpdateOrderSerializer(serializers.Serializer):
+    """批量更新品类排序序列化器"""
+    items = CategoryOrderItemSerializer(
+        many=True,
+        required=True,
+        help_text="品类排序项列表，每个项包含id和order字段"
+    )
+    
+    def validate_items(self, value):
+        """验证items列表"""
+        if not value:
+            raise serializers.ValidationError("items列表不能为空")
+        
+        # 检查是否有重复的ID
+        ids = [item['id'] for item in value]
+        if len(ids) != len(set(ids)):
+            raise serializers.ValidationError("items列表中不能有重复的品类ID")
+        
+        return value
+
+
 class CategoryDetailSerializer(serializers.ModelSerializer):
     """品类详情序列化器（用于创建和更新，支持树形结构）"""
     
