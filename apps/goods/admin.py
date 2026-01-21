@@ -58,6 +58,7 @@ class GoodsAdmin(admin.ModelAdmin):
         "purchase_date",
         "is_official",
         "created_at",
+        "order",
     )
     list_filter = (
         "ip",

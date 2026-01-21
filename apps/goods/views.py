@@ -1,5 +1,5 @@
 from django.db import transaction
-from django.db.models import Count, F
+from django.db.models import Count, F, Max, Min, Q
 from django_filters import (
     FilterSet,
     ModelMultipleChoiceFilter,
@@ -185,6 +185,9 @@ class GoodsViewSet(viewsets.ModelViewSet):
     throttle_scope = "goods_search"
     parser_classes = (MultiPartParser, FormParser, JSONParser)
 
+    # 稀疏排序步长（避免频繁重排）
+    ORDER_STEP = 1000
+
     def get_queryset(self):
         """
         使用 select_related / prefetch_related 彻底解决 N+1 查询问题。
@@ -245,7 +248,10 @@ class GoodsViewSet(viewsets.ModelViewSet):
                     serializer.instance = candidate
                     return
 
-        serializer.save()
+        # 为新建的谷子分配稀疏的 order：当前最小值 - ORDER_STEP，让新建的谷子排在最前面
+        min_order = Goods.objects.aggregate(min_order=Min("order")).get("min_order")
+        next_order = (min_order or 0) - self.ORDER_STEP
+        serializer.save(order=next_order)
 
     @action(detail=True, methods=["post"], url_path="move")
     def move(self, request, pk=None):
@@ -261,7 +267,12 @@ class GoodsViewSet(viewsets.ModelViewSet):
         position = serializer.validated_data["position"]
 
         try:
-            anchor_goods = Goods.objects.get(id=anchor_id)
+            with transaction.atomic():
+                # 加锁当前与锚点，避免并发错位
+                current_locked = Goods.objects.select_for_update().get(
+                    id=current_goods.id
+                )
+                anchor_goods = Goods.objects.select_for_update().get(id=anchor_id)
         except Goods.DoesNotExist:
             return Response(
                 {"detail": "锚点谷子不存在"},
@@ -272,29 +283,140 @@ class GoodsViewSet(viewsets.ModelViewSet):
         if current_goods.id == anchor_goods.id:
             return Response({"detail": "无需移动"}, status=status.HTTP_200_OK)
 
+        def _ordering_fields():
+            # 确保全序：order, -created_at, id
+            return ["order", "-created_at", "id"]
+
+        def _prev_item(obj, exclude_ids):
+            """获取 obj 前一个元素（按 ordering）"""
+            return (
+                Goods.objects.exclude(id__in=exclude_ids)
+                .filter(
+                    Q(order__lt=obj.order)
+                    | Q(order=obj.order, created_at__gt=obj.created_at)
+                    | Q(
+                        order=obj.order,
+                        created_at=obj.created_at,
+                        id__gt=obj.id,
+                    )
+                )
+                .order_by("-order", "created_at", "-id")
+                .first()
+            )
+
+        def _next_item(obj, exclude_ids):
+            """获取 obj 后一个元素（按 ordering）"""
+            return (
+                Goods.objects.exclude(id__in=exclude_ids)
+                .filter(
+                    Q(order__gt=obj.order)
+                    | Q(order=obj.order, created_at__lt=obj.created_at)
+                    | Q(
+                        order=obj.order,
+                        created_at=obj.created_at,
+                        id__lt=obj.id,
+                    )
+                )
+                .order_by(*_ordering_fields())
+                .first()
+            )
+
+        def _rebalance_around(center: Goods, exclude_ids, window: int = 100):
+            """
+            在锚点附近拉开稀疏间距，防止无空隙时无法插入。
+            仅重排局部窗口，避免大范围更新。
+            """
+            before_qs = (
+                Goods.objects.exclude(id__in=exclude_ids | {center.id})
+                .filter(
+                    Q(order__lt=center.order)
+                    | Q(order=center.order, created_at__gt=center.created_at)
+                    | Q(order=center.order, created_at=center.created_at, id__gt=center.id)
+                )
+                .order_by("-order", "created_at", "-id")[:window]
+            )
+            after_qs = (
+                Goods.objects.exclude(id__in=exclude_ids | {center.id})
+                .filter(
+                    Q(order__gt=center.order)
+                    | Q(order=center.order, created_at__lt=center.created_at)
+                    | Q(order=center.order, created_at=center.created_at, id__lt=center.id)
+                )
+                .order_by(*_ordering_fields())[:window]
+            )
+
+            before_list = list(before_qs)
+            after_list = list(after_qs)
+            ordered = list(reversed(before_list)) + [center] + after_list
+
+            # 以锚点为中心重新赋值稀疏 order
+            base = center.order - len(before_list) * self.ORDER_STEP
+            updates = []
+            for idx, obj in enumerate(ordered):
+                new_val = base + idx * self.ORDER_STEP
+                if obj.order != new_val:
+                    obj.order = new_val
+                    updates.append(obj)
+            if updates:
+                Goods.objects.bulk_update(updates, ["order"])
+
+        def _compute_new_order(prev_obj, next_obj):
+            if prev_obj and next_obj:
+                # 两者之间有空隙
+                if prev_obj.order + 1 < next_obj.order:
+                    return (prev_obj.order + next_obj.order) // 2
+                # 无空隙，返回 None 触发重排
+                return None
+            if prev_obj and not next_obj:
+                return prev_obj.order + self.ORDER_STEP
+            if next_obj and not prev_obj:
+                return next_obj.order - self.ORDER_STEP
+            # 列表为空的极端场景
+            return 0
+
         with transaction.atomic():
-            # 1. 计算目标 order
-            # before: 目标位置为 anchor.order
-            # after:  目标位置为 anchor.order + 1
-            target_order = anchor_goods.order
-            if position == "after":
-                target_order += 1
-
-            # 2. 腾出空间：
-            # 将所有 order >= target_order 的谷子（排除自己）整体后移 1
-            Goods.objects.filter(order__gte=target_order).exclude(
+            # 重新加锁防止与上面 select_for_update 间隔（事务块）
+            current_locked = Goods.objects.select_for_update().get(
                 id=current_goods.id
-            ).update(order=F("order") + 1)
+            )
+            anchor_locked = Goods.objects.select_for_update().get(id=anchor_id)
 
-            # 3. 设置当前谷子的 order
-            current_goods.order = target_order
-            current_goods.save(update_fields=["order"])
+            if position == "before":
+                prev_obj = _prev_item(anchor_locked, exclude_ids={current_locked.id})
+                next_obj = anchor_locked
+            else:  # after
+                prev_obj = anchor_locked
+                next_obj = _next_item(anchor_locked, exclude_ids={current_locked.id})
+
+            new_order = _compute_new_order(prev_obj, next_obj)
+
+            if new_order is None:
+                # 无空隙，先重排再算一次
+                _rebalance_around(anchor_locked, exclude_ids={current_locked.id})
+
+                if position == "before":
+                    prev_obj = _prev_item(anchor_locked, exclude_ids={current_locked.id})
+                    next_obj = anchor_locked
+                else:
+                    prev_obj = anchor_locked
+                    next_obj = _next_item(anchor_locked, exclude_ids={current_locked.id})
+
+                new_order = _compute_new_order(prev_obj, next_obj)
+
+                # 仍然为 None（极端情况）：再 fallback 一次
+                if new_order is None:
+                    new_order = anchor_locked.order + (
+                        self.ORDER_STEP if position == "after" else -self.ORDER_STEP
+                    )
+
+            current_locked.order = new_order
+            current_locked.save(update_fields=["order"])
 
         return Response(
             {
                 "detail": "排序更新成功",
                 "id": str(current_goods.id),
-                "new_order": current_goods.order,
+                "new_order": current_locked.order,
             },
             status=status.HTTP_200_OK,
         )
