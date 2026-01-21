@@ -54,6 +54,18 @@
 - **路径冗余**：自动维护完整路径字符串（如「书房/书架A/第3层」），便于快速检索和展示
 - **级联管理**：删除节点时自动处理子节点和关联商品，确保数据一致性
 
+### 📂 品类树状结构
+- **层级分类**：品类支持树状结构（如「周边/吧唧/圆形吧唧」），便于精细化管理
+- **路径维护**：自动维护完整路径字符串，支持按路径搜索和展示
+- **颜色标签**：支持为品类配置颜色标识（`color_tag`），便于 UI 展示
+- **排序控制**：支持自定义排序值（`order`），灵活控制展示顺序
+
+### 🎨 自定义排序系统
+- **谷子排序**：支持自定义排序值（`order`），实现拖拽排序功能
+- **稀疏排序**：采用稀疏序列设计（步长 1000），避免频繁重排
+- **智能重排**：提供管理命令 `rebalance_goods_order`，批量重排排序值
+- **品类排序**：品类支持批量更新排序，便于拖拽排序场景
+
 ### 🔍 IP 关键词系统
 - **多别名支持**：为每个 IP 配置多个搜索关键词（如「星铁」「崩铁」「HSR」）
 - **智能匹配**：搜索时自动匹配 IP 名称和所有关键词，提升检索体验
@@ -66,8 +78,13 @@
 
 ### 🚀 性能优化
 - **查询优化**：列表接口使用瘦身序列化器，详情接口提供完整数据
+- **分页支持**：谷子列表接口支持分页（默认每页 18 条，可自定义）
 - **限流保护**：检索接口限流 60 次/分钟，防止恶意请求
 - **CORS 支持**：完善的跨域配置，支持前后端分离部署
+
+### 🎯 IP 作品类型
+- **类型分类**：支持作品类型字段（`subject_type`），包括书籍、动画、音乐、游戏、三次元/特摄
+- **类型过滤**：支持按作品类型进行筛选和统计
 
 ---
 
@@ -94,28 +111,40 @@
 
 #### 数据模型
 - **`IP`**：作品来源（如「崩坏：星穹铁道」），支持唯一性约束和索引
+  - 新增 `subject_type` 字段：作品类型（书籍、动画、音乐、游戏、三次元/特摄）
 - **`IPKeyword`**：IP 多关键词表，支持为同一 IP 配置多个别名/搜索关键字
-- **`Character`**：角色信息（如「流萤」），关联所属 IP，支持头像和性别字段
+- **`Character`**：角色信息（如「流萤」），关联所属 IP，支持性别字段
+  - `avatar` 字段：支持 URL 或相对路径（CharField），便于使用外部图片资源
 - **`Category`**：品类维度（吧唧、色纸、立牌、挂件等）
+  - 支持树状结构：`parent` 字段实现层级关系
+  - `path_name`：冗余的完整路径（如「周边/吧唧/圆形吧唧」），带索引
+  - `color_tag`：颜色标签，用于 UI 展示（如 `#FF5733`）
+  - `order`：排序值，控制同级节点的展示顺序
 - **`Goods`**：核心谷子资产表，支持：
   - 多维关联：IP / 角色（M2M）/ 品类 / 物理位置（`StorageNode`）
   - 基础资产字段：名称、数量、购入单价、入手时间、是否官谷、状态、备注
   - 图片：主图 + 补充图片（`GuziImage`，如背板细节、瑕疵点等）
   - UUID 主键：适合前后端解耦和离线草稿合并场景
+  - `order`：自定义排序值（BigInteger），支持拖拽排序功能
 - **`GuziImage`**：谷子补充图片表，支持标签分类
 
 #### API 接口
 - **基础数据 CRUD**
-  - `IPViewSet`：IP 作品的完整 CRUD，支持关键词管理
+  - `IPViewSet`：IP 作品的完整 CRUD，支持关键词管理和作品类型过滤
   - `CharacterViewSet`：角色的完整 CRUD，支持按 IP 过滤和搜索
-  - `CategoryViewSet`：品类的完整 CRUD，支持搜索和过滤
+  - `CategoryViewSet`：品类的完整 CRUD，支持树状结构、搜索和过滤
+    - `GET /api/categories/tree/`：获取品类树（扁平列表，前端组装为树）
+    - `POST /api/categories/batch-update-order/`：批量更新品类排序（用于拖拽排序）
 - **谷子检索（`GoodsViewSet`）**
-  - 列表接口：瘦身序列化器，满足检索页展示需求
+  - 列表接口：瘦身序列化器，满足检索页展示需求，支持分页（默认每页 18 条）
   - 详情接口：完整字段 + 补充图片
-  - 多维过滤：`ip` / `characters` / `characters__in` / `category` / `status` / `status__in` / `location`
+  - 多维过滤：`ip` / `character` / `category`（支持树形筛选，自动包含子品类）/ `status` / `status__in` / `location` / `is_official`
   - 全文搜索：支持对 `name`、`ip__name`、`ip__keywords__value` 的搜索
   - 幂等创建：防止重复录入相同资产
-  - 主图上传：独立接口 `POST /api/goods/{id}/upload-main-photo/`
+  - 排序功能：`POST /api/goods/{id}/move/` 调整谷子排序（支持 before/after 位置）
+  - 图片上传：
+    - `POST /api/goods/{id}/upload-main-photo/`：上传/更新主图
+    - `POST /api/goods/{id}/upload-additional-photos/`：上传/更新补充图片（支持批量）
 - **BGM API 集成**
   - `POST /api/bgm/search-characters/`：搜索 IP 作品并获取角色列表（调用 BGM API）
   - `POST /api/bgm/create-characters/`：批量创建 IP 和角色到本地数据库
@@ -147,6 +176,8 @@
 - **其他依赖**：
   - `django-filter`：高级过滤支持
   - `django-cors-headers`：跨域资源共享
+  - `django-extensions`：Django 扩展工具集
+  - `gunicorn`：生产环境 WSGI HTTP 服务器
 
 ---
 
@@ -162,8 +193,24 @@ ShiGu/
 ├── apps/
 │   ├── goods/               # 谷子核心域模型及 API
 │   │   ├── models.py        # IP / IPKeyword / Character / Category / Goods / GuziImage
-│   │   ├── serializers.py   # 列表/详情序列化器，支持基础数据 CRUD 和 BGM API
-│   │   ├── views.py         # ViewSet：IP / Character / Category / Goods / BGM API
+│   │   ├── serializers/     # 序列化器模块（按功能拆分）
+│   │   │   ├── __init__.py  # 统一导出
+│   │   │   ├── ip.py        # IP 相关序列化器
+│   │   │   ├── character.py # 角色相关序列化器
+│   │   │   ├── category.py  # 品类相关序列化器
+│   │   │   ├── goods.py     # 谷子相关序列化器
+│   │   │   ├── bgm.py       # BGM API 相关序列化器
+│   │   │   └── fields.py    # 自定义字段（KeywordsField, AvatarField）
+│   │   ├── views/           # 视图模块（按功能拆分）
+│   │   │   ├── __init__.py  # 统一导出
+│   │   │   ├── ip.py        # IP ViewSet
+│   │   │   ├── character.py # Character ViewSet
+│   │   │   ├── category.py  # Category ViewSet
+│   │   │   ├── goods.py     # Goods ViewSet
+│   │   │   └── bgm.py       # BGM API 视图函数
+│   │   ├── management/      # Django 管理命令
+│   │   │   └── commands/
+│   │   │       └── rebalance_goods_order.py  # 重排谷子排序值命令
 │   │   ├── utils.py         # 图片压缩工具函数
 │   │   ├── bgm_service.py   # BGM API 服务封装（搜索 IP、获取角色列表）
 │   │   ├── admin.py         # Django Admin 后台管理配置
@@ -173,6 +220,9 @@ ShiGu/
 │       ├── models.py        # 自关联 StorageNode
 │       ├── serializers.py   # 基础与树结构序列化器
 │       └── views.py         # 列表/创建/详情/更新/删除/树结构/商品查询视图
+│
+├── gunicorn_config.py       # Gunicorn 生产环境配置文件
+├── manage.sh                # 生产环境服务管理脚本（启动/停止/重启等）
 │
 ├── media/                   # 媒体文件目录（图片上传）
 │   ├── characters/          # 角色头像
@@ -286,6 +336,18 @@ python manage.py runserver
 
 访问 `http://127.0.0.1:8000/api/` 应能看到 DRF 的 API 根视图。
 
+#### 10. 管理命令（可选）
+
+项目提供了管理命令用于维护数据：
+
+```bash
+# 重排谷子排序值（消除相同 order 值的堆积）
+python manage.py rebalance_goods_order
+
+# 自定义步长和批量大小
+python manage.py rebalance_goods_order --step 2000 --batch-size 1000
+```
+
 ---
 
 ## 📖 API 说明
@@ -305,8 +367,12 @@ python manage.py runserver
 | **基础数据** | `/api/ips/` | IP 作品 CRUD |
 | | `/api/characters/` | 角色 CRUD |
 | | `/api/categories/` | 品类 CRUD |
-| **谷子管理** | `/api/goods/` | 谷子检索与 CRUD |
+| | `/api/categories/tree/` | 品类树结构 |
+| | `/api/categories/batch-update-order/` | 批量更新品类排序 |
+| **谷子管理** | `/api/goods/` | 谷子检索与 CRUD（支持分页） |
+| | `/api/goods/{id}/move/` | 调整谷子排序 |
 | | `/api/goods/{id}/upload-main-photo/` | 上传主图 |
+| | `/api/goods/{id}/upload-additional-photos/` | 上传补充图片（支持批量） |
 | **位置管理** | `/api/location/nodes/` | 收纳节点 CRUD |
 | | `/api/location/tree/` | 位置树结构 |
 | | `/api/location/nodes/{id}/goods/` | 节点下商品查询 |
@@ -316,9 +382,9 @@ python manage.py runserver
 ### 基础数据 CRUD
 
 #### IP 作品管理
-- `GET /api/ips/`：获取 IP 作品列表（支持 `?search=关键词` 和 `?name=作品名` 过滤）
+- `GET /api/ips/`：获取 IP 作品列表（支持 `?search=关键词`、`?name=作品名`、`?subject_type=4` 过滤）
 - `GET /api/ips/{id}/`：获取 IP 作品详情
-- `POST /api/ips/`：创建 IP 作品（请求体：`{"name": "崩坏：星穹铁道", "keywords": ["星铁", "崩铁", "HSR"]}`）
+- `POST /api/ips/`：创建 IP 作品（请求体：`{"name": "崩坏：星穹铁道", "keywords": ["星铁", "崩铁", "HSR"], "subject_type": 4}`）
 - `PUT/PATCH /api/ips/{id}/`：更新 IP 作品
 - `DELETE /api/ips/{id}/`：删除 IP 作品
 - `GET /api/ips/{id}/characters/`：获取指定 IP 下的所有角色列表
@@ -331,25 +397,28 @@ python manage.py runserver
 - `DELETE /api/characters/{id}/`：删除角色
 
 #### 品类管理
-- `GET /api/categories/`：获取品类列表（支持 `?search=品类名` 搜索）
+- `GET /api/categories/`：获取品类列表（支持 `?search=品类名` 搜索，`?parent=1` 按父节点过滤）
 - `GET /api/categories/{id}/`：获取品类详情
-- `POST /api/categories/`：创建品类（请求体：`{"name": "吧唧"}`）
+- `POST /api/categories/`：创建品类（支持树状结构，请求体：`{"name": "吧唧", "parent": 1, "color_tag": "#FF5733"}`）
 - `PUT/PATCH /api/categories/{id}/`：更新品类
-- `DELETE /api/categories/{id}/`：删除品类
+- `DELETE /api/categories/{id}/`：删除品类（级联删除所有子节点）
+- `GET /api/categories/tree/`：获取品类树（扁平列表，前端组装为树）
+- `POST /api/categories/batch-update-order/`：批量更新品类排序（用于拖拽排序）
 
 ### 谷子检索
 
 #### 谷子列表
-- `GET /api/goods/`
+- `GET /api/goods/`（支持分页，默认每页 18 条，可通过 `?page_size=20` 自定义）
 - 查询参数示例：
   - `?ip=1`：按 IP 过滤
-  - `?characters=5`：按单个角色过滤
-  - `?characters__in=5,6`：按多个角色过滤（包含任意指定角色）
-  - `?category=2`：按品类过滤
+  - `?character=5`：按单个角色过滤（包含该角色的谷子）
+  - `?category=2`：按品类过滤（自动包含该品类下的所有子品类）
   - `?status=in_cabinet`：按单个状态过滤
   - `?status__in=in_cabinet,sold`：按多个状态过滤
   - `?location=3`：按收纳位置过滤
+  - `?is_official=true`：按是否官谷过滤
   - `?search=流萤`：对名称、IP 名称及 IP 关键词进行搜索
+  - `?page=1&page_size=20`：分页参数
 
 #### 谷子详情
 - `GET /api/goods/{id}/`
@@ -358,7 +427,9 @@ python manage.py runserver
 #### 创建/更新谷子
 - `POST /api/goods/`：创建谷子（JSON，主图单独上传）
 - `PUT/PATCH /api/goods/{id}/`：更新谷子
+- `POST /api/goods/{id}/move/`：调整谷子排序（请求体：`{"anchor_id": "uuid", "position": "before|after"}`）
 - `POST /api/goods/{id}/upload-main-photo/`：上传/更新主图（multipart/form-data）
+- `POST /api/goods/{id}/upload-additional-photos/`：上传/更新补充图片（multipart/form-data，支持批量）
 - `DELETE /api/goods/{id}/`：删除谷子
 
 ### 收纳位置
@@ -419,11 +490,41 @@ python manage.py collectstatic
 
 #### 3. 使用 Gunicorn（推荐）
 
+**方式一：使用管理脚本（推荐）**
+
+项目提供了 `manage.sh` 脚本，方便管理生产环境服务：
+
+```bash
+# 启动服务
+./manage.sh start
+
+# 停止服务
+./manage.sh stop
+
+# 重启服务
+./manage.sh restart
+
+# 重新加载配置（优雅重启，不中断连接）
+./manage.sh reload
+
+# 查看服务状态
+./manage.sh status
+
+# 查看日志
+./manage.sh logs          # 错误日志
+./manage.sh logs access   # 访问日志
+```
+
+**方式二：直接使用 Gunicorn**
+
 ```bash
 # 安装 Gunicorn
 pip install gunicorn
 
-# 启动服务
+# 使用配置文件启动
+gunicorn ShiGu.wsgi:application --config gunicorn_config.py
+
+# 或直接指定参数启动
 gunicorn ShiGu.wsgi:application --bind 0.0.0.0:8000 --workers 4
 ```
 
@@ -530,8 +631,35 @@ CMD ["gunicorn", "ShiGu.wsgi:application", "--bind", "0.0.0.0:8000"]
 - **多字段搜索**：`Goods` 支持对名称、IP 名称及 IP 关键词（`IPKeyword`）的轻量搜索
 - **关键词管理**：IP 关键词在序列化器中支持字符串数组读写，创建/更新时自动同步
 
+### 品类树状结构
+- **层级设计**：`Category` 采用自关联设计，支持无限级层级（类似 `StorageNode`）
+- **路径维护**：`path_name` 字段自动维护完整路径（如「周边/吧唧/圆形吧唧」），带索引便于搜索
+- **颜色标签**：`color_tag` 字段支持配置颜色标识（如 `#FF5733`），便于 UI 展示
+- **排序控制**：`order` 字段控制同级节点的展示顺序，支持批量更新排序
+- **级联删除**：删除品类节点时自动级联删除所有子节点
+
+### 自定义排序系统
+- **谷子排序**：`Goods.order` 字段（BigInteger）支持自定义排序，默认排序规则为 `order, -created_at`
+- **稀疏排序**：采用稀疏序列设计（步长 1000），避免频繁重排导致的性能问题
+- **拖拽排序**：`POST /api/goods/{id}/move/` 接口支持调整谷子排序（before/after 位置）
+- **智能重排**：当排序值冲突时，自动在锚点附近重排局部窗口，避免大范围更新
+- **管理命令**：`python manage.py rebalance_goods_order` 可批量重排所有谷子的排序值
+
+### 分页功能
+- **默认分页**：谷子列表接口默认每页 18 条记录
+- **自定义分页**：支持通过 `?page_size=20` 自定义每页数量（最大 100 条）
+- **分页响应**：返回格式包含 `count`、`page`、`page_size`、`next`、`previous`、`results`
+
+### 角色头像字段
+- **字段类型**：`Character.avatar` 从 `ImageField` 改为 `CharField`，支持 URL 或相对路径
+- **应用场景**：便于使用外部图片资源（如 BGM API 返回的头像 URL），无需本地存储
+
+### IP 作品类型
+- **字段类型**：`IP.subject_type` 字段支持作品类型分类（1=书籍, 2=动画, 3=音乐, 4=游戏, 6=三次元/特摄）
+- **过滤支持**：支持按作品类型进行筛选（`?subject_type=4` 或 `?subject_type__in=2,4`）
+
 ### 角色性别字段
-- **字段类型**：`Character` 支持 `gender` 字段，取值为 `male` / `female` / `other`，默认 `female`
+- **字段类型**：`Character` 支持 `gender` 字段，取值为 `male` / `female` / `other`，默认 `other`
 - **应用场景**：便于后续做统计或展示优化（如按性别筛选、统计等）
 
 ### 收纳节点维护
@@ -540,10 +668,17 @@ CMD ["gunicorn", "ShiGu.wsgi:application", "--bind", "0.0.0.0:8000"]
 - **级联删除**：删除节点会递归删除子节点，并将关联谷子的 `location` 置空，避免悬挂引用
 - **级联查询**：`StorageNodeGoodsView` 支持 `include_children` 参数做级联查询
 
+### 品类树形筛选
+- **自动包含子品类**：`GoodsFilter.filter_category_tree` 方法实现树形筛选，当按品类过滤时自动包含该品类下的所有子品类
+- **递归查询**：使用递归算法获取指定品类的所有后代品类 ID，确保筛选结果完整
+- **性能优化**：使用 `prefetch_related` 预加载子节点，避免递归过程中的 N+1 查询问题
+
 ### 性能优化
 - **查询优化**：列表接口使用 `select_related` / `prefetch_related` 规避 N+1 查询
 - **序列化优化**：列表接口使用瘦身序列化器，详情接口提供完整数据
+- **分页优化**：谷子列表接口支持分页，减少单次响应数据量
 - **限流保护**：检索接口限流 60 次/分钟，防止恶意请求
+- **代码结构**：序列化器和视图按功能模块拆分，提高代码可维护性和可读性
 
 ### 跨域与安全
 - **CORS 配置**：开发环境默认开放本地常见端口的 CORS
@@ -559,6 +694,12 @@ CMD ["gunicorn", "ShiGu.wsgi:application", "--bind", "0.0.0.0:8000"]
 - **时区配置**：默认使用 UTC 时区，生产环境建议根据实际需求调整 `TIME_ZONE` 设置
 - **语言配置**：默认使用英文（`en-us`），可根据需要修改 `LANGUAGE_CODE`
 
+### 管理命令
+- **重排排序值**：`python manage.py rebalance_goods_order` 用于重排谷子的 `order` 字段
+  - 消除历史上相同 `order` 值的堆积
+  - 重新赋值为稀疏等差序列（默认步长 1000）
+  - 支持自定义步长（`--step`）和批量大小（`--batch-size`）参数
+
 
 ---
 
@@ -568,10 +709,14 @@ CMD ["gunicorn", "ShiGu.wsgi:application", "--bind", "0.0.0.0:8000"]
 2. **高性能检索**：通过查询优化和瘦身序列化器，确保列表检索的响应速度
 3. **智能去重**：基于业务逻辑的幂等性保护，防止重复录入
 4. **灵活的收纳管理**：树状结构 + 路径冗余，既支持复杂层级又便于快速检索
-5. **多角色支持**：M2M 关系设计，完美支持双人/多人谷子场景
-6. **关键词搜索**：IP 关键词系统，提升搜索体验
-7. **图片自动压缩**：智能压缩算法，上传时自动压缩，节省存储空间
-8. **BGM API 集成**：无缝对接 Bangumi API，快速导入 IP 和角色数据，提升数据录入效率
+5. **品类树状结构**：品类支持树状层级分类，便于精细化管理，支持颜色标签和自定义排序
+6. **自定义排序系统**：谷子和品类都支持自定义排序，实现拖拽排序功能，采用稀疏序列设计避免频繁重排
+7. **多角色支持**：M2M 关系设计，完美支持双人/多人谷子场景
+8. **关键词搜索**：IP 关键词系统，提升搜索体验
+9. **图片自动压缩**：智能压缩算法，上传时自动压缩，节省存储空间
+10. **BGM API 集成**：无缝对接 Bangumi API，快速导入 IP 和角色数据，提升数据录入效率
+11. **生产环境工具**：提供 `manage.sh` 脚本和 `gunicorn_config.py` 配置，便于生产环境部署和管理
+12. **代码结构优化**：序列化器和视图按功能模块拆分，提高代码可维护性
 
 ---
 
