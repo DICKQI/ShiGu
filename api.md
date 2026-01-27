@@ -947,6 +947,292 @@ DELETE /api/goods/abc123/additional-photos/?photo_ids=10,11,12
 }
 ```
 
+---
+
+### 4.6 谷子统计图表数据（Dashboard）
+
+- **URL**：`GET /api/goods/stats/`
+- **说明**：
+  - 为前端**统计看板 / 图表页**提供一次性汇总数据，适合用于：
+    - 概览卡片（资产数量、金额、数据质量）
+    - 饼图 / 柱状图（状态、官谷/同人、作品类型、品类/IP/角色/位置 TopN）
+    - 折线 / 面积图（入手趋势、录入趋势）
+  - **完全复用** `GET /api/goods/` 的过滤与搜索逻辑（包括树形品类、树形位置），因此：
+    - 列表页与统计页的筛选条件可以共用一套 UI（只需切路由或切 Tab）
+    - 前端只需把当前筛选条件原样拼到 `/api/goods/stats/` 上即可
+
+#### 查询参数
+
+> 所有参数均为**可选**，未传时按全量数据统计。
+
+- **与列表接口共用的筛选 / 搜索参数**（语义与 4.1 完全一致）：
+
+| 参数名        | 类型   | 说明                                                                                          |
+| ------------- | ------ | --------------------------------------------------------------------------------------------- |
+| `ip`          | int    | IP ID，精确过滤                                                                               |
+| `character`   | int    | 单个角色 ID，匹配**包含该角色**的所有谷子                                                     |
+| `category`    | int    | 树形品类筛选：传任意层级品类 ID，自动包含其所有子品类                                        |
+| `theme`       | int    | 主题 ID                                                                                       |
+| `status`      | string | 单状态过滤：`in_cabinet` / `outdoor` / `sold`                                               |
+| `status__in`  | string | 多状态过滤，逗号分隔，如：`in_cabinet,sold`                                                 |
+| `is_official` | bool   | 是否官谷：`true`=只看官谷，`false`=只看非官谷                                                 |
+| `location`    | int    | 树形位置筛选：节点 ID，自动包含该节点及其所有子节点                                          |
+| `search`      | string | 轻量搜索：在 `Goods.name`、`IP.name`、`IPKeyword.value` 上匹配                                |
+
+- **统计专用参数**：
+
+| 参数名           | 类型   | 说明                                                                                                       |
+| ---------------- | ------ | ---------------------------------------------------------------------------------------------------------- |
+| `top`            | int    | TopN 数量（默认 `10`，最小 1，最大 50），影响：品类/IP/角色/位置 Top 列表的长度                           |
+| `group_by`       | string | 趋势时间粒度：`month`（默认）、`week`、`day`。影响 `trends.purchase_date` 和 `trends.created_at` 的 bucket |
+| `purchase_start` | date   | 按入手日期下界（含），格式 `YYYY-MM-DD`                                                                   |
+| `purchase_end`   | date   | 按入手日期上界（含），格式 `YYYY-MM-DD`                                                                   |
+| `created_start`  | date   | 按创建时间下界（含），格式 `YYYY-MM-DD`                                                                   |
+| `created_end`    | date   | 按创建时间上界（含），格式 `YYYY-MM-DD`                                                                   |
+
+> 建议用法示例：
+>
+> - 「只看星铁 IP + 流萤相关 + 在馆 / 已售出，按月统计最近一年的入手情况」：
+>   - `/api/goods/stats/?ip=1&character=5&status__in=in_cabinet,sold&group_by=month&purchase_start=2024-01-01`
+> - 「只看官谷，观察不同作品类型的占比 + 各 IP Top10」：
+>   - `/api/goods/stats/?is_official=true&top=10`
+
+#### 响应结构总览
+
+```json
+{
+  "meta": { ... },
+  "overview": { ... },
+  "distributions": { ... },
+  "trends": { ... }
+}
+```
+
+- `meta`：本次统计的**元信息**（如传入的 top / group_by / 时间范围）
+- `overview`：概览卡片数据（数量、金额、数据质量）
+- `distributions`：各类分布/TopN（适合饼图 / 柱状图 / 条形图）
+- `trends`：时间维度趋势（适合折线图 / 面积图）
+
+#### 字段详情
+
+##### 1）`meta` 元信息
+
+```json
+{
+  "top": 10,
+  "group_by": "month",
+  "purchase_start": "2024-01-01",
+  "purchase_end": null,
+  "created_start": null,
+  "created_end": null
+}
+```
+
+说明：
+- `top`：当前生效的 TopN 数量（后端已做 1~50 之间的裁剪）
+- `group_by`：时间粒度，取值：`month` / `week` / `day`
+- 其余字段为时间范围，未传则为 `null`
+
+##### 2）`overview` 概览卡片（适合做上方统计卡）
+
+```json
+{
+  "goods_count": 120,
+  "quantity_sum": 180,
+  "value_sum": "10240.50",
+  "with_price_count": 100,
+  "missing_price_count": 20,
+  "with_purchase_date_count": 110,
+  "missing_purchase_date_count": 10,
+  "with_location_count": 95,
+  "missing_location_count": 25,
+  "with_main_photo_count": 115,
+  "missing_main_photo_count": 5
+}
+```
+
+推荐前端用法：
+- 资产规模类卡片：
+  - 「总件数」：`goods_count`
+  - 「总数量」：`quantity_sum`
+  - 「估算总金额」：`value_sum`（`quantity * price` 汇总，price 为空按 0 处理）
+- 数据质量类卡片/进度条：
+  - 价格填写率：`with_price_count / goods_count`
+  - 入手日期填写率：`with_purchase_date_count / goods_count`
+  - 位置填写率：`with_location_count / goods_count`
+  - 主图填写率：`with_main_photo_count / goods_count`
+
+##### 3）`distributions` 各类分布 / TopN
+
+结构示例：
+
+```json
+{
+  "status": [
+    {
+      "status": "in_cabinet",
+      "label": "在馆",
+      "goods_count": 80,
+      "quantity_sum": 120
+    },
+    {
+      "status": "sold",
+      "label": "已售出",
+      "goods_count": 20,
+      "quantity_sum": 30
+    }
+  ],
+  "is_official": [
+    {
+      "is_official": true,
+      "label": "官谷",
+      "goods_count": 90,
+      "quantity_sum": 130
+    },
+    {
+      "is_official": false,
+      "label": "同人/非官谷",
+      "goods_count": 30,
+      "quantity_sum": 50
+    }
+  ],
+  "ip_subject_type": [
+    {
+      "ip__subject_type": 4,
+      "label": "游戏",
+      "goods_count": 70,
+      "quantity_sum": 100
+    }
+  ],
+  "category_top": [
+    {
+      "category_id": 2,
+      "category__name": "立牌",
+      "category__path_name": "周边/立牌",
+      "category__color_tag": "#FFC300",
+      "goods_count": 40,
+      "quantity_sum": 60,
+      "value_sum": "3500.00"
+    }
+  ],
+  "ip_top": [
+    {
+      "ip_id": 1,
+      "ip__name": "崩坏：星穹铁道",
+      "ip__subject_type": 4,
+      "subject_type_label": "游戏",
+      "goods_count": 50,
+      "quantity_sum": 80,
+      "value_sum": "5200.00"
+    }
+  ],
+  "character_top": [
+    {
+      "characters__id": 5,
+      "characters__name": "流萤",
+      "characters__ip__id": 1,
+      "characters__ip__name": "崩坏：星穹铁道",
+      "goods_count": 25,
+      "quantity_sum": 35,
+      "value_sum": "1800.00"
+    }
+  ],
+  "location_top": [
+    {
+      "location_id": 3,
+      "location__name": "第一层",
+      "location__path_name": "卧室/书桌左侧柜子/第一层",
+      "goods_count": 30,
+      "quantity_sum": 45,
+      "value_sum": "2600.00"
+    }
+  ]
+}
+```
+
+前端图表建议：
+- `status`：
+  - 饼图：不同状态的占比（使用 `label` + `goods_count`）
+  - 条形图：状态 vs `quantity_sum`
+- `is_official`：
+  - 饼图：官谷 vs 同人占比
+- `ip_subject_type`：
+  - 饼图/柱状图：作品类型结构（动画/游戏/三次元…）
+- `category_top` / `ip_top` / `character_top` / `location_top`：
+  - 横向条形图 TopN：
+    - x 轴：`goods_count` 或 `value_sum`
+    - y 轴：名称（如 `category__path_name`、`ip__name`、`characters__name`、`location__path_name`）
+  - 颜色：
+    - 可直接使用 `category__color_tag` 渲染品类图表的主色
+
+##### 4）`trends` 时间趋势
+
+结构示例：
+
+```json
+{
+  "purchase_date": [
+    {
+      "bucket": "2024-01-01",
+      "goods_count": 5,
+      "quantity_sum": 7,
+      "value_sum": "420.00"
+    },
+    {
+      "bucket": "2024-02-01",
+      "goods_count": 8,
+      "quantity_sum": 10,
+      "value_sum": "680.00"
+    }
+  ],
+  "created_at": [
+    {
+      "bucket": "2024-01-01",
+      "goods_count": 10,
+      "quantity_sum": 12
+    }
+  ]
+}
+```
+
+说明：
+- `bucket`：
+  - 按 `group_by` 归并后的时间桶，已序列化为 ISO 字符串（`YYYY-MM-DD`）
+  - `group_by=month` 时：通常为每月的第一天，例如 `2024-01-01`
+  - `group_by=week` 时：起始日期（Django `TruncWeek` 的行为）
+  - `group_by=day` 时：具体日期
+- `purchase_date`：
+  - 以**入手日期**为时间轴，更贴近真实购入节奏
+  - 适合做「购入趋势 / 消费曲线」折线图（x=`bucket`，y=`value_sum` 或 `goods_count`）
+- `created_at`：
+  - 以**录入系统时间**为时间轴，适合观察录入节奏、补录高峰
+
+前端图表建议：
+- 折线图 / 面积图：
+  - x 轴：`bucket`（配合日期格式化）
+  - y 轴：可以叠加多条线：
+    - 「件数」：`goods_count`
+    - 「总数量」：`quantity_sum`
+    - 「估算金额」：`value_sum`（仅 `purchase_date` 有）
+- 可通过切换 `group_by=month|week|day` 做时间粒度切换（注意前端缓存，避免频繁请求）
+
+#### 与列表接口的典型联动示例
+
+1. 用户在列表页设置好筛选条件（IP/角色/品类/状态/位置等）。
+2. 点击「统计看板」Tab：
+   - 前端直接复用当前 querystring，将 `/api/goods/` 替换为 `/api/goods/stats/`。
+   - 示例：列表页 URL 为  
+     `/api/goods/?ip=1&character=5&category=2&status__in=in_cabinet,sold`  
+     切换到统计页时请求：  
+     `/api/goods/stats/?ip=1&character=5&category=2&status__in=in_cabinet,sold&group_by=month&top=10`
+3. 使用上文 `overview` / `distributions` / `trends` 分别渲染：
+   - 顶部统计卡片（总数/金额/数据质量）
+   - 中间一行饼图/条形图（状态、官谷/同人、作品类型）
+   - 下方多列 TopN 条形图（品类/IP/角色/位置）
+   - 底部趋势折线图（`purchase_date` vs `value_sum`）
+
+> 这样，前端可以在**不再额外设计后端接口**的前提下，完成大部分统计/图表需求。
+
 ## 五、基础数据 API（CRUD 完整接口）
 
 用于管理基础数据（IP作品、角色、品类）的完整 CRUD 接口。建议在应用启动时预加载列表数据并缓存到前端状态管理（Pinia/Vuex）。

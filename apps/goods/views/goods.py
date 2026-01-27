@@ -2,7 +2,8 @@
 谷子（Goods）相关的视图和过滤器
 """
 from django.db import transaction
-from django.db.models import Count, Min, Q
+from django.db.models import Count, DecimalField, ExpressionWrapper, F, Min, Q, Sum, Value
+from django.db.models.functions import Coalesce, TruncDate, TruncMonth, TruncWeek
 from django_filters import (
     BaseInFilter,
     BooleanFilter,
@@ -18,6 +19,9 @@ from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
+
+import datetime
+from decimal import Decimal
 
 from ..models import Category, Character, Goods, GuziImage
 from apps.location.models import StorageNode
@@ -668,3 +672,230 @@ class GoodsViewSet(viewsets.ModelViewSet):
                 {"detail": "photo_ids 参数格式错误，请使用逗号分隔的整数ID"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
+    @action(detail=False, methods=["get"], url_path="stats")
+    def stats(self, request):
+        """
+        统计图表数据接口（用于前端 dashboard / 图表展示）。
+
+        - 复用 list 的过滤/搜索能力（GoodsFilter + SearchFilter），包括：
+          ip / category(树形) / location(树形) / theme / status / status__in / is_official / character / search
+        - 额外支持时间范围（purchase_date 为主）：
+          ?purchase_start=YYYY-MM-DD&purchase_end=YYYY-MM-DD
+          ?created_start=YYYY-MM-DD&created_end=YYYY-MM-DD
+        - 支持 topN 与趋势粒度：
+          ?top=10&group_by=month|week|day
+        """
+
+        def _parse_int(val: str | None, default: int) -> int:
+            try:
+                n = int(val) if val is not None and str(val).strip() != "" else default
+                return max(1, min(n, 50))  # 避免过大 topN
+            except Exception:
+                return default
+
+        def _parse_date(val: str | None) -> datetime.date | None:
+            if not val:
+                return None
+            try:
+                return datetime.date.fromisoformat(val)
+            except Exception:
+                return None
+
+        def _choice_map(choices: tuple[tuple[object, str], ...]) -> dict[object, str]:
+            return {k: v for k, v in choices}
+
+        top_n = _parse_int(request.query_params.get("top"), default=10)
+        group_by = (request.query_params.get("group_by") or "month").lower().strip()
+        if group_by not in ("month", "week", "day"):
+            group_by = "month"
+
+        purchase_start = _parse_date(request.query_params.get("purchase_start"))
+        purchase_end = _parse_date(request.query_params.get("purchase_end"))
+        created_start = _parse_date(request.query_params.get("created_start"))
+        created_end = _parse_date(request.query_params.get("created_end"))
+
+        qs = self.filter_queryset(self.get_queryset())
+
+        # 额外时间范围过滤（不影响其他维度）
+        if purchase_start:
+            qs = qs.filter(purchase_date__gte=purchase_start)
+        if purchase_end:
+            qs = qs.filter(purchase_date__lte=purchase_end)
+        if created_start:
+            qs = qs.filter(created_at__date__gte=created_start)
+        if created_end:
+            qs = qs.filter(created_at__date__lte=created_end)
+
+        zero = Value(Decimal("0.00"))
+        value_expr = ExpressionWrapper(
+            F("quantity") * Coalesce(F("price"), zero),
+            output_field=DecimalField(max_digits=20, decimal_places=2),
+        )
+
+        # 概览卡片（overview）
+        overview = qs.aggregate(
+            goods_count=Count("id", distinct=True),
+            quantity_sum=Coalesce(Sum("quantity"), Value(0)),
+            # 估算总金额：quantity * price（price 为空按 0 计）
+            value_sum=Coalesce(Sum(value_expr), zero),
+            with_price_count=Count("id", filter=Q(price__isnull=False), distinct=True),
+            missing_price_count=Count("id", filter=Q(price__isnull=True), distinct=True),
+            with_purchase_date_count=Count(
+                "id", filter=Q(purchase_date__isnull=False), distinct=True
+            ),
+            missing_purchase_date_count=Count(
+                "id", filter=Q(purchase_date__isnull=True), distinct=True
+            ),
+            with_location_count=Count("id", filter=Q(location__isnull=False), distinct=True),
+            missing_location_count=Count(
+                "id", filter=Q(location__isnull=True), distinct=True
+            ),
+            with_main_photo_count=Count(
+                "id", filter=Q(main_photo__isnull=False), distinct=True
+            ),
+            missing_main_photo_count=Count(
+                "id", filter=Q(main_photo__isnull=True), distinct=True
+            ),
+        )
+
+        status_label_map = _choice_map(Goods.STATUS_CHOICES)
+        subject_type_label_map = _choice_map(getattr(Goods.ip.field.related_model, "SUBJECT_TYPE_CHOICES", ()))  # type: ignore[attr-defined]
+
+        # 分布：状态 / 官非 / 品类 / IP / 位置
+        status_dist = list(
+            qs.values("status")
+            .annotate(goods_count=Count("id", distinct=True), quantity_sum=Sum("quantity"))
+            .order_by("-goods_count")
+        )
+        for item in status_dist:
+            item["label"] = status_label_map.get(item["status"], item["status"])
+
+        official_dist = list(
+            qs.values("is_official")
+            .annotate(goods_count=Count("id", distinct=True), quantity_sum=Sum("quantity"))
+            .order_by("-goods_count")
+        )
+        for item in official_dist:
+            item["label"] = "官谷" if item["is_official"] else "同人/非官谷"
+
+        category_top = list(
+            qs.values("category_id", "category__name", "category__path_name", "category__color_tag")
+            .annotate(
+                goods_count=Count("id", distinct=True),
+                quantity_sum=Sum("quantity"),
+                value_sum=Coalesce(Sum(value_expr), zero),
+            )
+            .order_by("-goods_count")[:top_n]
+        )
+
+        ip_top = list(
+            qs.values("ip_id", "ip__name", "ip__subject_type")
+            .annotate(
+                goods_count=Count("id", distinct=True),
+                quantity_sum=Sum("quantity"),
+                value_sum=Coalesce(Sum(value_expr), zero),
+            )
+            .order_by("-goods_count")[:top_n]
+        )
+        for item in ip_top:
+            st = item.get("ip__subject_type")
+            item["subject_type_label"] = subject_type_label_map.get(st, None)
+
+        location_top = list(
+            qs.values("location_id", "location__name", "location__path_name")
+            .annotate(
+                goods_count=Count("id", distinct=True),
+                quantity_sum=Sum("quantity"),
+                value_sum=Coalesce(Sum(value_expr), zero),
+            )
+            .order_by("-goods_count")[:top_n]
+        )
+
+        # 多对多：角色 TopN（按“包含该角色的商品数”计）
+        character_top = list(
+            qs.values("characters__id", "characters__name", "characters__ip__id", "characters__ip__name")
+            .annotate(
+                goods_count=Count("id", distinct=True),
+                quantity_sum=Sum("quantity"),
+                value_sum=Coalesce(Sum(value_expr), zero),
+            )
+            .order_by("-goods_count")[:top_n]
+        )
+
+        # IP 作品类型分布（适合饼图/堆叠柱状图）
+        ip_subject_type_dist = list(
+            qs.values("ip__subject_type")
+            .annotate(goods_count=Count("id", distinct=True), quantity_sum=Sum("quantity"))
+            .order_by("-goods_count")
+        )
+        for item in ip_subject_type_dist:
+            st = item.get("ip__subject_type")
+            item["label"] = subject_type_label_map.get(st, "未知")
+
+        # 趋势：按 purchase_date（主）与 created_at（辅助）
+        if group_by == "month":
+            trunc_purchase = TruncMonth("purchase_date")
+            trunc_created = TruncMonth("created_at")
+        elif group_by == "week":
+            trunc_purchase = TruncWeek("purchase_date")
+            trunc_created = TruncWeek("created_at")
+        else:
+            trunc_purchase = TruncDate("purchase_date")
+            trunc_created = TruncDate("created_at")
+
+        purchase_trend = list(
+            qs.filter(purchase_date__isnull=False)
+            .annotate(bucket=trunc_purchase)
+            .values("bucket")
+            .annotate(
+                goods_count=Count("id", distinct=True),
+                quantity_sum=Sum("quantity"),
+                value_sum=Coalesce(Sum(value_expr), zero),
+            )
+            .order_by("bucket")
+        )
+        for item in purchase_trend:
+            # JSON 友好化：datetime/date -> ISO 字符串
+            b = item.get("bucket")
+            item["bucket"] = b.isoformat() if b else None
+
+        created_trend = list(
+            qs.annotate(bucket=trunc_created)
+            .values("bucket")
+            .annotate(
+                goods_count=Count("id", distinct=True),
+                quantity_sum=Sum("quantity"),
+            )
+            .order_by("bucket")
+        )
+        for item in created_trend:
+            b = item.get("bucket")
+            item["bucket"] = b.isoformat() if b else None
+
+        payload = {
+            "meta": {
+                "top": top_n,
+                "group_by": group_by,
+                "purchase_start": purchase_start.isoformat() if purchase_start else None,
+                "purchase_end": purchase_end.isoformat() if purchase_end else None,
+                "created_start": created_start.isoformat() if created_start else None,
+                "created_end": created_end.isoformat() if created_end else None,
+            },
+            "overview": overview,
+            "distributions": {
+                "status": status_dist,
+                "is_official": official_dist,
+                "ip_subject_type": ip_subject_type_dist,
+                "category_top": category_top,
+                "ip_top": ip_top,
+                "character_top": character_top,
+                "location_top": location_top,
+            },
+            "trends": {
+                "purchase_date": purchase_trend,
+                "created_at": created_trend,
+            },
+        }
+
+        return Response(payload, status=status.HTTP_200_OK)
