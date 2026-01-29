@@ -206,6 +206,7 @@ class GoodsViewSet(viewsets.ModelViewSet):
         "name",
         "ip__name",
         "ip__keywords__value",
+        'characters__name',
     )
 
     # 分页配置
