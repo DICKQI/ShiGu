@@ -127,6 +127,8 @@
   - UUID 主键：适合前后端解耦和离线草稿合并场景
   - `order`：自定义排序值（BigInteger），支持拖拽排序功能
 - **`GuziImage`**：谷子补充图片表，支持标签分类
+- **`Theme`**：主题表，用于对谷子进行「主题维度」的聚合（例如角色生日、活动主题等）
+- **`Showcase` / `ShowcaseGoods`**：展柜与展柜-谷子关联表，用于定义「一组要一起展示的谷子」
 
 #### API 接口
 - **基础数据 CRUD**
@@ -145,6 +147,9 @@
   - 图片上传：
     - `POST /api/goods/{id}/upload-main-photo/`：上传/更新主图
     - `POST /api/goods/{id}/upload-additional-photos/`：上传/更新补充图片（支持批量）
+- **主题与展柜**
+  - `ThemeViewSet`：主题 CRUD，支持按主题聚合查看相关谷子
+  - `ShowcaseViewSet`：展柜 CRUD，支持为展柜关联多件谷子以及排序
 - **BGM API 集成**
   - `POST /api/bgm/search-characters/`：搜索 IP 作品并获取角色列表（调用 BGM API）
   - `POST /api/bgm/create-characters/`：批量创建 IP 和角色到本地数据库
@@ -171,12 +176,14 @@
 - **后端框架**：Django 6.0+
 - **API 框架**：Django REST Framework 3.14+
 - **数据库**：SQLite（开发环境，生产环境可切换 PostgreSQL/MySQL）
+- **API 文档**：drf-spectacular（提供 OpenAPI Schema / Swagger UI / Redoc）
 - **图片处理**：Pillow 10.0+
 - **HTTP 客户端**：requests（用于 BGM API 集成）
 - **其他依赖**：
   - `django-filter`：高级过滤支持
   - `django-cors-headers`：跨域资源共享
   - `django-extensions`：Django 扩展工具集
+  - `drf-spectacular`：自动生成 API 文档与调试页面
   - `gunicorn`：生产环境 WSGI HTTP 服务器
 
 ---
@@ -192,13 +199,15 @@ ShiGu/
 │
 ├── apps/
 │   ├── goods/               # 谷子核心域模型及 API
-│   │   ├── models.py        # IP / IPKeyword / Character / Category / Goods / GuziImage
+│   │   ├── models.py        # IP / IPKeyword / Character / Category / Theme / Goods / GuziImage / Showcase / ShowcaseGoods
 │   │   ├── serializers/     # 序列化器模块（按功能拆分）
 │   │   │   ├── __init__.py  # 统一导出
 │   │   │   ├── ip.py        # IP 相关序列化器
 │   │   │   ├── character.py # 角色相关序列化器
 │   │   │   ├── category.py  # 品类相关序列化器
 │   │   │   ├── goods.py     # 谷子相关序列化器
+│   │   │   ├── theme.py     # 主题相关序列化器
+│   │   │   ├── showcase.py  # 展柜相关序列化器
 │   │   │   ├── bgm.py       # BGM API 相关序列化器
 │   │   │   └── fields.py    # 自定义字段（KeywordsField, AvatarField）
 │   │   ├── views/           # 视图模块（按功能拆分）
@@ -207,6 +216,8 @@ ShiGu/
 │   │   │   ├── character.py # Character ViewSet
 │   │   │   ├── category.py  # Category ViewSet
 │   │   │   ├── goods.py     # Goods ViewSet
+│   │   │   ├── theme.py     # Theme ViewSet
+│   │   │   ├── showcase.py  # Showcase ViewSet
 │   │   │   └── bgm.py       # BGM API 视图函数
 │   │   ├── management/      # Django 管理命令
 │   │   │   └── commands/
@@ -353,6 +364,11 @@ python manage.py rebalance_goods_order --step 2000 --batch-size 1000
 ## 📖 API 说明
 
 > 📚 **完整 API 文档**请参考 [`api.md`](api.md)，包含详细的请求/响应示例和字段说明。
+>
+> 📘 **在线接口文档**（drf-spectacular 自动生成）：
+> - Swagger UI：`/api/schema/swagger-ui/`
+> - Redoc：`/api/schema/redoc/`
+> - OpenAPI Schema：`/api/schema/`
 
 ### API 基础信息
 
@@ -373,6 +389,9 @@ python manage.py rebalance_goods_order --step 2000 --batch-size 1000
 | | `/api/goods/{id}/move/` | 调整谷子排序 |
 | | `/api/goods/{id}/upload-main-photo/` | 上传主图 |
 | | `/api/goods/{id}/upload-additional-photos/` | 上传补充图片（支持批量） |
+| **主题管理** | `/api/themes/` | 主题 CRUD，按主题聚合谷子 |
+| **展柜管理** | `/api/showcases/` | 展柜 CRUD |
+| | `/api/showcases/{id}/goods/` | 管理展柜下关联的谷子（增删 / 排序） |
 | **位置管理** | `/api/location/nodes/` | 收纳节点 CRUD |
 | | `/api/location/tree/` | 位置树结构 |
 | | `/api/location/nodes/{id}/goods/` | 节点下商品查询 |
