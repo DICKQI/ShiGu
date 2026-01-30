@@ -2,8 +2,9 @@
 谷子（Goods）相关的视图和过滤器
 """
 from django.db import transaction
-from django.db.models import Count, DecimalField, ExpressionWrapper, F, Min, Q, Sum, Value
-from django.db.models.functions import Coalesce, TruncDate, TruncMonth, TruncWeek
+from django.db.models import Count, DateField, DecimalField, ExpressionWrapper, F, Min, Q, Sum, Value
+from django.db.models.functions import Cast, Coalesce, TruncDate, TruncMonth, TruncWeek
+from django.db import connection
 from django_filters import (
     BaseInFilter,
     BooleanFilter,
@@ -835,6 +836,9 @@ class GoodsViewSet(viewsets.ModelViewSet):
             item["label"] = subject_type_label_map.get(st, "未知")
 
         # 趋势：按 purchase_date（主）与 created_at（辅助）
+        # 对于 SQLite，当 group_by=day 时，使用 Cast 而不是 TruncDate，避免 django_datetime_cast_date 函数的问题
+        is_sqlite = connection.vendor == 'sqlite'
+        
         if group_by == "month":
             trunc_purchase = TruncMonth("purchase_date")
             trunc_created = TruncMonth("created_at")
@@ -842,11 +846,29 @@ class GoodsViewSet(viewsets.ModelViewSet):
             trunc_purchase = TruncWeek("purchase_date")
             trunc_created = TruncWeek("created_at")
         else:
-            trunc_purchase = TruncDate("purchase_date")
-            trunc_created = TruncDate("created_at")
+            # SQLite 的 TruncDate 使用 django_datetime_cast_date 函数，可能有 NULL 值处理问题
+            # 对于 DateField (purchase_date)，使用 Cast 来转换为日期类型，更安全
+            # 对于 DateTimeField (created_at)，仍然使用 TruncDate，因为它可能不会有问题
+            if is_sqlite:
+                trunc_purchase = Cast("purchase_date", DateField())
+                trunc_created = TruncDate("created_at")  # DateTimeField 使用 TruncDate
+            else:
+                trunc_purchase = TruncDate("purchase_date")
+                trunc_created = TruncDate("created_at")
 
+        # 先过滤掉 NULL 值，然后再进行 annotate，避免 SQLite 的 TruncDate 函数接收到 NULL 值
+        # 创建一个新的 queryset，显式移除默认排序，避免 SQLite 的 date() 函数接收到 NULL 值
+        # 使用 Goods.objects 而不是 qs，避免继承默认排序和复杂的 JOIN
+        # 显式调用 order_by() 来移除模型的默认排序
+        purchase_trend_qs = (
+            Goods.objects
+            .filter(purchase_date__isnull=False)
+            .filter(id__in=qs.values_list('id', flat=True))  # 应用之前的过滤条件
+            .order_by()  # 显式移除默认排序
+        )
+        
         purchase_trend = list(
-            qs.filter(purchase_date__isnull=False)
+            purchase_trend_qs
             .annotate(bucket=trunc_purchase)
             .values("bucket")
             .annotate(
