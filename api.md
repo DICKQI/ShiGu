@@ -38,6 +38,7 @@
 | `id`           | Integer (PK)          | 自增主键                                              |
 | `name`         | Char(100), 唯一, 索引 | 作品名，如：`崩坏：星穹铁道`                          |
 | `subject_type` | Integer (可空)        | 作品类型：`1`=书籍, `2`=动画, `3`=音乐, `4`=游戏, `6`=三次元/特摄 |
+| `order`        | Integer               | 展示排序，越小越靠前，默认 `0`                        |
 
 #### `IPKeyword` IP 多关键词表
 
@@ -1274,6 +1275,7 @@ DELETE /api/goods/abc123/additional-photos/?photo_ids=10,11,12
 
 - **URL**：`GET /api/ips/`
 - **说明**：获取所有IP作品列表，用于筛选器下拉选项。
+  - 默认排序：先按 `order` 升序，其次按 `id` 升序（保证全序、稳定）。
 
 ##### 查询参数（全部可选）
 
@@ -1292,6 +1294,7 @@ DELETE /api/goods/abc123/additional-photos/?photo_ids=10,11,12
     "id": 1,
     "name": "崩坏：星穹铁道",
     "subject_type": 4,
+    "order": 0,
     "keywords": [
       {
         "id": 1,
@@ -1312,6 +1315,7 @@ DELETE /api/goods/abc123/additional-photos/?photo_ids=10,11,12
     "id": 2,
     "name": "原神",
     "subject_type": null,
+    "order": 0,
     "keywords": [],
     "character_count": 3
   }
@@ -1322,6 +1326,7 @@ DELETE /api/goods/abc123/additional-photos/?photo_ids=10,11,12
 - `id`：IP作品 ID，用于后续筛选参数。
 - `name`：完整作品名。
 - `subject_type`：作品类型，可选值：`1`=书籍, `2`=动画, `3`=音乐, `4`=游戏, `6`=三次元/特摄。可为 `null`。
+- `order`：展示排序，越小越靠前（默认 `0`）。
 - `keywords`：IP关键词/别名数组，每个关键词包含 `id` 和 `value` 字段。
 - `character_count`：该IP下的角色数量（整数）。
 
@@ -1350,6 +1355,7 @@ DELETE /api/goods/abc123/additional-photos/?photo_ids=10,11,12
   "id": 1,
   "name": "崩坏：星穹铁道",
   "subject_type": 4,
+  "order": 0,
   "keywords": [
     {
       "id": 1,
@@ -1372,6 +1378,7 @@ DELETE /api/goods/abc123/additional-photos/?photo_ids=10,11,12
 - `id`：IP作品 ID。
 - `name`：完整作品名。
 - `subject_type`：作品类型，可选值：`1`=书籍, `2`=动画, `3`=音乐, `4`=游戏, `6`=三次元/特摄。可为 `null`。
+- `order`：展示排序，越小越靠前（默认 `0`）。
 - `keywords`：IP关键词/别名数组，每个关键词包含 `id` 和 `value` 字段。
 - `character_count`：该IP下的角色数量（整数）。
 
@@ -1388,6 +1395,7 @@ DELETE /api/goods/abc123/additional-photos/?photo_ids=10,11,12
 {
   "name": "崩坏：星穹铁道",
   "subject_type": 4,
+  "order": 0,
   "keywords": ["星铁", "崩铁", "HSR"]
 }
 ```
@@ -1398,6 +1406,7 @@ DELETE /api/goods/abc123/additional-photos/?photo_ids=10,11,12
 | -------------- | -------------- | ---- | -------------------------------------------------------------------- |
 | `name`         | string         | 是   | 作品名，必须唯一，最大长度100字符                                    |
 | `subject_type` | integer        | 否   | 作品类型：`1`=书籍, `2`=动画, `3`=音乐, `4`=游戏, `6`=三次元/特摄。可为 `null` |
+| `order`        | integer        | 否   | 展示排序，越小越靠前，默认 `0`                                       |
 | `keywords`     | array[string]  | 否   | 关键词/别名列表，例如：`["星铁", "崩铁", "HSR"]`。每个关键词最大长度50字符，会自动去重和去空 |
 
 ##### 响应
@@ -1426,6 +1435,7 @@ DELETE /api/goods/abc123/additional-photos/?photo_ids=10,11,12
 {
   "name": "崩坏：星穹铁道（更新）",
   "subject_type": 4,
+  "order": 10,
   "keywords": ["星铁", "崩铁", "HSR", "星穹铁道"]
 }
 ```
@@ -1435,6 +1445,7 @@ DELETE /api/goods/abc123/additional-photos/?photo_ids=10,11,12
 ```json
 {
   "subject_type": 2,
+  "order": 20,
   "keywords": ["星铁", "崩铁"]
 }
 ```
@@ -1445,6 +1456,7 @@ DELETE /api/goods/abc123/additional-photos/?photo_ids=10,11,12
 | -------------- | -------------- | ---- | -------------------------------------------------------------------- |
 | `name`         | string         | 否   | 作品名，最大长度100字符（PUT 必填，PATCH 可选）                      |
 | `subject_type` | integer        | 否   | 作品类型：`1`=书籍, `2`=动画, `3`=音乐, `4`=游戏, `6`=三次元/特摄。可为 `null`（PUT 可选，PATCH 可选） |
+| `order`        | integer        | 否   | 展示排序，越小越靠前（PUT 可选，PATCH 可选）                         |
 | `keywords`     | array[string]  | 否   | 关键词/别名列表，例如：`["星铁", "崩铁", "HSR"]`。每个关键词最大长度50字符。更新时会**完全替换**现有关键词列表（删除不在列表中的关键词，添加新关键词） |
 
 ##### 响应
@@ -1521,6 +1533,88 @@ DELETE /api/goods/abc123/additional-photos/?photo_ids=10,11,12
 - `gender`：角色性别：`male`(男) / `female`(女) / `other`(其他)。
 
 > **注意**：此接口与 `GET /api/characters/?ip={id}` 功能相同，但提供更直观的 RESTful 语义。可以根据前端使用习惯选择使用哪个接口。
+
+---
+
+#### 5.1.7 批量更新IP作品排序
+
+- **URL**：`POST /api/ips/batch-update-order/`
+- **说明**：批量更新多个IP作品的排序值。用于前端通过拖拽等方式调整IP作品顺序后，批量更新排序值。支持同时更新多个IP作品的 `order` 字段。
+
+##### 请求体（JSON）
+
+```json
+{
+  "items": [
+    {
+      "id": 1,
+      "order": 10
+    },
+    {
+      "id": 2,
+      "order": 20
+    }
+  ]
+}
+```
+
+##### 字段说明
+
+| 字段名 | 类型           | 必填 | 说明                                                                 |
+| ------ | -------------- | ---- | -------------------------------------------------------------------- |
+| `items`| array[object]  | 是   | IP作品排序项列表，每个项包含 `id` 和 `order` 字段                    |
+| `id`   | integer        | 是   | IP作品ID                                                             |
+| `order`| integer        | 是   | 排序值，值越小越靠前。用于控制IP作品的展示顺序                      |
+
+##### 约束说明
+
+- `items` 列表不能为空
+- `items` 列表中不能有重复的IP作品ID
+- 所有提供的IP作品ID必须存在，否则会返回错误
+
+##### 响应示例
+
+**成功响应**：
+
+```json
+{
+  "detail": "成功更新 2 个IP作品的排序",
+  "updated_count": 2,
+  "ips": [
+    {
+      "id": 1,
+      "name": "崩坏：星穹铁道",
+      "subject_type": 4,
+      "order": 10,
+      "keywords": [
+        {
+          "id": 1,
+          "value": "星铁"
+        }
+      ],
+      "character_count": 5
+    },
+    {
+      "id": 2,
+      "name": "原神",
+      "subject_type": null,
+      "order": 20,
+      "keywords": [],
+      "character_count": 3
+    }
+  ]
+}
+```
+
+##### 错误响应
+
+**IP作品ID不存在**：
+
+```json
+{
+  "detail": "以下IP作品ID不存在: [999]"
+}
+```
 
 ---
 

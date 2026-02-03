@@ -32,6 +32,12 @@ class IP(models.Model):
         help_text="1=书籍, 2=动画, 3=音乐, 4=游戏, 6=三次元/特摄",
     )
     
+    order = models.IntegerField(
+        default=0,
+        verbose_name="排序值",
+        help_text="控制IP作品的展示顺序，值越小越靠前",
+    )
+
     created_at = models.DateTimeField(
         auto_now_add=True,
         null=True,
@@ -42,7 +48,7 @@ class IP(models.Model):
     class Meta:
         verbose_name = "IP作品"
         verbose_name_plural = "IP作品"
-        ordering = ["created_at"]
+        ordering = ["order", "id"]
 
     def __str__(self):
         return self.name

@@ -4,8 +4,10 @@ Goods app serializers module.
 """
 from .fields import AvatarField, KeywordsField
 from .ip import (
+    IPBatchUpdateOrderSerializer,
     IPDetailSerializer,
     IPKeywordSerializer,
+    IPOrderItemSerializer,
     IPSimpleSerializer,
 )
 from .character import CharacterSimpleSerializer
@@ -55,6 +57,8 @@ __all__ = [
     "IPKeywordSerializer",
     "IPSimpleSerializer",
     "IPDetailSerializer",
+    "IPOrderItemSerializer",
+    "IPBatchUpdateOrderSerializer",
     # Character
     "CharacterSimpleSerializer",
     # Category

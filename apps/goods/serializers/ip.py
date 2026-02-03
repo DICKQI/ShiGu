@@ -23,7 +23,7 @@ class IPSimpleSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = IP
-        fields = ("id", "name", "subject_type", "keywords", "character_count")
+        fields = ("id", "name", "subject_type", "order", "keywords", "character_count")
 
     def get_character_count(self, obj):
         """统计IP下的角色数量"""
@@ -41,7 +41,35 @@ class IPDetailSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = IP
-        fields = ("id", "name", "subject_type", "keywords")
+        fields = ("id", "name", "subject_type", "order", "keywords")
+
+
+class IPOrderItemSerializer(serializers.Serializer):
+    """IP作品排序项序列化器（用于批量更新排序）"""
+
+    id = serializers.IntegerField(help_text="IP作品ID")
+    order = serializers.IntegerField(help_text="排序值，值越小越靠前")
+
+
+class IPBatchUpdateOrderSerializer(serializers.Serializer):
+    """批量更新IP作品排序序列化器"""
+
+    items = IPOrderItemSerializer(
+        many=True,
+        required=True,
+        help_text="IP作品排序项列表，每个项包含id和order字段",
+    )
+
+    def validate_items(self, value):
+        """验证items列表"""
+        if not value:
+            raise serializers.ValidationError("items列表不能为空")
+
+        ids = [item["id"] for item in value]
+        if len(ids) != len(set(ids)):
+            raise serializers.ValidationError("items列表中不能有重复的IP作品ID")
+
+        return value
 
     def create(self, validated_data):
         """创建IP时同时创建关键词"""
