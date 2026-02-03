@@ -274,6 +274,114 @@ def bgm_search_characters(request):
 
 ---
 
+## 4.5 权限枚举对象设计 (`apps/rbac/enums.py`)
+
+权限枚举对象设计分为两部分：
+- **`PermCode`**: 纯粹的常量类，用于在 View 和 Decorator 中调用（代码提示友好）。
+- **`PERMISSION_MAP`**: 权限的详细定义字典，用于 Migration 脚本初始化数据库和前端展示。
+
+### 4.5.1 权限分组常量
+
+```python
+class PermissionGroups:
+    """权限分组常量"""
+    ASSETS = "资产管理"      # 谷子、展柜
+    IP_DATA = "IP资料库"     # IP、角色
+    SYSTEM = "系统设置"      # 分类、位置、主题
+    ADMIN = "权限管理"       # 角色、用户分配
+```
+
+### 4.5.2 权限标识符枚举
+
+```python
+class PermCode:
+    """
+    权限标识符枚举
+    在代码中直接使用：@require_permission(PermCode.GOODS_LIST)
+    """
+    # === 1. 谷子管理 (Goods) ===
+    GOODS_LIST = 'goods:list'
+    GOODS_RETRIEVE = 'goods:retrieve'
+    GOODS_CREATE = 'goods:create'
+    GOODS_UPDATE = 'goods:update'
+    GOODS_DELETE = 'goods:delete'
+    GOODS_MOVE = 'goods:move'
+    GOODS_UPLOAD_MAIN = 'goods:upload_main'
+    GOODS_UPLOAD_EXTRA = 'goods:upload_extra'
+    GOODS_STATS = 'goods:stats'
+
+    # === 2. 展柜管理 (Showcase) ===
+    SHOWCASE_VIEW = 'showcase:view'
+    SHOWCASE_CREATE = 'showcase:create'
+    SHOWCASE_UPDATE = 'showcase:update'
+    SHOWCASE_DELETE = 'showcase:delete'
+    SHOWCASE_MANAGE_GOODS = 'showcase:manage_goods'
+
+    # === 3. IP/角色库 (IP & Character) ===
+    IP_VIEW = 'ip:view'
+    IP_CREATE = 'ip:create'
+    IP_UPDATE = 'ip:update'
+    IP_DELETE = 'ip:delete'
+    IP_BGM_IMPORT = 'ip:bgm_import'
+
+    # === 4. 系统基础 (Category/Theme/Location) ===
+    SYS_CATEGORY = 'sys:category'
+    SYS_THEME = 'sys:theme'
+    SYS_LOCATION = 'sys:location'
+    
+    # === 5. RBAC 管理 (仅超级管理员或特定角色) ===
+    RBAC_ROLE_MANAGE = 'rbac:role_manage'
+```
+
+### 4.5.3 权限元数据映射
+
+```python
+# === 权限元数据定义 (用于数据库初始化与前端展示) ===
+# 格式: Code: (Verbose Name, Group)
+
+PERMISSION_MAP = {
+    # 谷子管理
+    PermCode.GOODS_LIST: ("查看谷子列表", PermissionGroups.ASSETS),
+    PermCode.GOODS_RETRIEVE: ("查看谷子详情", PermissionGroups.ASSETS),
+    PermCode.GOODS_CREATE: ("创建谷子", PermissionGroups.ASSETS),
+    PermCode.GOODS_UPDATE: ("编辑谷子", PermissionGroups.ASSETS),
+    PermCode.GOODS_DELETE: ("删除谷子", PermissionGroups.ASSETS),
+    PermCode.GOODS_MOVE: ("谷子排序移动", PermissionGroups.ASSETS),
+    PermCode.GOODS_UPLOAD_MAIN: ("上传谷子主图", PermissionGroups.ASSETS),
+    PermCode.GOODS_UPLOAD_EXTRA: ("上传补充图", PermissionGroups.ASSETS),
+    PermCode.GOODS_STATS: ("查看资产统计", PermissionGroups.ASSETS),
+
+    # 展柜管理
+    PermCode.SHOWCASE_VIEW: ("查看展柜", PermissionGroups.ASSETS),
+    PermCode.SHOWCASE_CREATE: ("创建展柜", PermissionGroups.ASSETS),
+    PermCode.SHOWCASE_UPDATE: ("编辑展柜", PermissionGroups.ASSETS),
+    PermCode.SHOWCASE_DELETE: ("删除展柜", PermissionGroups.ASSETS),
+    PermCode.SHOWCASE_MANAGE_GOODS: ("管理柜内谷子", PermissionGroups.ASSETS),
+
+    # IP资料库
+    PermCode.IP_VIEW: ("查看IP资料", PermissionGroups.IP_DATA),
+    PermCode.IP_CREATE: ("创建IP/角色", PermissionGroups.IP_DATA),
+    PermCode.IP_UPDATE: ("编辑IP/角色", PermissionGroups.IP_DATA),
+    PermCode.IP_DELETE: ("删除IP/角色", PermissionGroups.IP_DATA),
+    PermCode.IP_BGM_IMPORT: ("BgmWiki导入", PermissionGroups.IP_DATA),
+
+    # 系统设置
+    PermCode.SYS_CATEGORY: ("分类树管理", PermissionGroups.SYSTEM),
+    PermCode.SYS_THEME: ("主题/标签管理", PermissionGroups.SYSTEM),
+    PermCode.SYS_LOCATION: ("收纳位置管理", PermissionGroups.SYSTEM),
+    
+    # RBAC
+    PermCode.RBAC_ROLE_MANAGE: ("角色权限管理", PermissionGroups.ADMIN),
+}
+```
+
+**使用说明**：
+- 在 ViewSet 中使用 `PermCode` 常量，IDE 可提供代码补全和类型检查。
+- Migration 脚本遍历 `PERMISSION_MAP` 初始化 `Permission` 表。
+- 前端可通过 API 获取 `PERMISSION_MAP` 结构，用于权限配置界面展示。
+
+---
+
 ## 5. 权限清单 (Permission Registry)
 
 需要在系统初始化（Migration）时预置以下权限 Code。
