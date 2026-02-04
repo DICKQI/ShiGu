@@ -6,6 +6,7 @@ from rest_framework import filters as drf_filters, viewsets
 
 from ..models import Character
 from ..serializers import CharacterSimpleSerializer
+from core.permissions import IsAdminOrReadOnly
 
 
 class CharacterViewSet(viewsets.ModelViewSet):
@@ -28,3 +29,4 @@ class CharacterViewSet(viewsets.ModelViewSet):
         "ip": ["exact"],
         "name": ["exact", "icontains"],
     }
+    permission_classes = [IsAdminOrReadOnly]

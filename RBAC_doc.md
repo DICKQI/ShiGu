@@ -1,9 +1,3 @@
-这份需求文档旨在指导 AI Agent（如 Cursor）在一个现有的 Django 谷子收纳系统中集成 RBAC（基于角色的访问控制）权限系统。
-
-文档遵循你的核心需求：**基于装饰器/Permission类控制接口**、**数据归属隔离**以及**公共数据与私有数据的权限区分**。
-
----
-
 # 开发需求文档：谷子收纳系统 RBAC 权限与账号体系集成
 
 ## 1. 项目概述与目标
@@ -38,7 +32,7 @@
 需要对现有模型进行迁移，增加用户关联字段。
 
 ### 4.1 新增/修改 App: `users`
-*   创建或配置 Django 自带的 `User` 模型，建议扩展一个 `UserProfile` 或直接使用 AbstractUser 以备未来扩展。
+*   创建User、Role和Permission模型，不要继承django自带的user模型
 
 ### 4.2 模型字段变更
 以下模型需要添加 `user` 外键字段（`on_delete=models.CASCADE`），并建立索引：
@@ -159,6 +153,3 @@ class PermissionPolicy(Enum):
     *   可以 CRUD 所有 IP/Character/Category。
 
 ---
-
-**给 Cursor 的提示词 (Prompt):**
-"请基于上述《谷子收纳系统 RBAC 权限需求文档》，对现有的 `goods` 和 `location` 代码进行重构。首先进行 Model 的变更，然后编写自定义 Permission 类，最后修改 ViewSet 以实现数据隔离和权限控制。请确保代码风格与现有代码保持一致。"

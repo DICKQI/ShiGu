@@ -39,6 +39,7 @@ from apps.location.views import (
     StorageNodeListCreateView,
     StorageNodeTreeView,
 )
+from apps.users import views as user_views
 
 router = DefaultRouter()
 router.register("goods", GoodsViewSet, basename="goods")
@@ -50,6 +51,10 @@ router.register("showcases", ShowcaseViewSet, basename="showcases")
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+    # Auth
+    path("api/auth/register/", user_views.register, name="auth-register"),
+    path("api/auth/login/", user_views.login, name="auth-login"),
+    path("api/auth/me/", user_views.me, name="auth-me"),
     # 核心检索接口
     path("api/", include(router.urls)),
     # BGM API接口

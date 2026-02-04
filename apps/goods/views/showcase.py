@@ -19,6 +19,7 @@ from ..serializers.showcase import (
     ShowcaseListSerializer,
 )
 from ..utils import compress_image
+from core.permissions import IsOwnerOrPublicReadOnly, is_admin
 
 
 class ShowcasePagination(PageNumberPagination):
@@ -49,6 +50,7 @@ class ShowcaseViewSet(viewsets.ModelViewSet):
     queryset = Showcase.objects.all().prefetch_related(
         "showcase_goods__goods__ip", "showcase_goods__goods__characters"
     )
+    permission_classes = [IsOwnerOrPublicReadOnly]
 
     # 稀疏排序步长
     ORDER_STEP = 1000
@@ -62,7 +64,7 @@ class ShowcaseViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         """优化查询，避免 N+1 问题"""
-        return (
+        qs = (
             Showcase.objects.all()
             .prefetch_related(
                 "showcase_goods__goods__ip",
@@ -72,14 +74,23 @@ class ShowcaseViewSet(viewsets.ModelViewSet):
             )
             .select_related()
         )
+        user = getattr(self.request, "user", None)
+        if not user or not getattr(user, "id", None):
+            return qs.none()
+        if is_admin(user):
+            return qs
+        return qs.filter(Q(user=user) | Q(is_public=True))
 
     def perform_create(self, serializer):
         """创建展柜时自动分配排序值"""
-        min_order = Showcase.objects.aggregate(min_order=Min("order")).get(
-            "min_order"
+        user = self.request.user
+        min_order = (
+            Showcase.objects.filter(user=user)
+            .aggregate(min_order=Min("order"))
+            .get("min_order")
         )
         next_order = (min_order or 0) - self.ORDER_STEP
-        serializer.save(order=next_order)
+        serializer.save(user=user, order=next_order)
 
     @action(
         detail=True,
@@ -135,7 +146,10 @@ class ShowcaseViewSet(viewsets.ModelViewSet):
 
         # 验证谷子存在
         try:
-            goods = Goods.objects.get(id=goods_id)
+            goods_qs = Goods.objects.all()
+            if not is_admin(request.user):
+                goods_qs = goods_qs.filter(user=showcase.user)
+            goods = goods_qs.get(id=goods_id)
         except Goods.DoesNotExist:
             return Response(
                 {"detail": "谷子不存在"}, status=status.HTTP_404_NOT_FOUND

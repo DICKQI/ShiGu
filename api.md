@@ -161,8 +161,11 @@
 
 ## 二、鉴权与通用说明
 
-当前项目为内网 / 个人系统示例，API 暂不强制鉴权。
-若后期需要接入登录态，可在 DRF 中配置 `DEFAULT_AUTHENTICATION_CLASSES` 并统一在 Header 携带 Token。
+当前版本已接入 **自建用户体系 + JWT Token 鉴权**，所有业务接口默认要求登录。
+
+- **认证方式**：HTTP Header 携带 `Authorization: Bearer <access_token>`
+- **获取 Token**：通过账号注册/登录接口获取 `access_token`
+- **未登录/Token 无效**：除登录/注册接口外，访问任意 API 将返回 `401 Unauthorized`
 
 错误响应统一使用 DRF 默认格式，例如：
 
@@ -172,11 +175,140 @@
 }
 ```
 
+以及未认证示例：
+
+```json
+{
+  "detail": "Authentication credentials were not provided."
+}
+```
+
+--- 
+
+### 2.1 账号注册（获取 Token）
+
+- **URL**：`POST /api/auth/register/`
+- **说明**：
+  - 创建新用户并返回用于后续调用的 `access_token`
+  - 注册成功后无需再单独登录，可直接使用返回的 Token 调用其它接口
+- **是否需要携带 Authorization**：否
+
+#### 请求体（JSON）
+
+```json
+{
+  "username": "test1",
+  "password": "12345678"
+}
+```
+
+字段说明：
+
+| 字段名     | 类型   | 必填 | 说明                 |
+| ---------- | ------ | ---- | -------------------- |
+| `username` | string | 是   | 登录用户名（唯一）   |
+| `password` | string | 是   | 登录密码，最少 6 位  |
+
+#### 响应示例
+
+```json
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9....",
+  "token_type": "Bearer",
+  "expires_in": 604800
+}
+```
+
+字段说明：
+
+| 字段名         | 类型   | 说明                                      |
+| -------------- | ------ | ----------------------------------------- |
+| `access_token` | string | JWT Token，后续通过 Authorization 传入   |
+| `token_type`   | string | 固定为 `"Bearer"`                         |
+| `expires_in`   | int    | 过期时间（秒），默认 7 天                 |
+
+---
+
+### 2.2 账号登录（获取 Token）
+
+- **URL**：`POST /api/auth/login/`
+- **说明**：使用已注册的账号密码获取新的 `access_token`
+- **是否需要携带 Authorization**：否
+
+#### 请求体（JSON）
+
+```json
+{
+  "username": "test1",
+  "password": "12345678"
+}
+```
+
+字段说明同 2.1。
+
+#### 响应示例
+
+与注册接口相同：
+
+```json
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9....",
+  "token_type": "Bearer",
+  "expires_in": 604800
+}
+```
+
+> 前端推荐：将 `access_token` 缓存到本地（如 LocalStorage），并在所有后续请求的 Header 中附加：
+>
+> ```http
+> Authorization: Bearer <access_token>
+> ```
+
+---
+
+### 2.3 获取当前登录用户信息
+
+- **URL**：`GET /api/auth/me/`
+- **说明**：根据 Header 中携带的 Token 返回当前登录用户的基础信息
+- **是否需要携带 Authorization**：是
+
+#### 请求头
+
+```http
+Authorization: Bearer <access_token>
+```
+
+#### 响应示例
+
+```json
+{
+  "id": 1,
+  "username": "test1",
+  "role": "User"
+}
+```
+
+字段说明：
+
+| 字段名     | 类型   | 说明             |
+| ---------- | ------ | ---------------- |
+| `id`       | int    | 用户 ID          |
+| `username` | string | 用户名           |
+| `role`     | string | 角色名称：`User` / `Admin` |
+
+> 角色说明：
+>
+> - `User`：普通用户，只能访问/修改自己的私有数据（Goods / Theme / Showcase / StorageNode）
+> - `Admin`：管理员，可管理公共元数据（IP / 角色 / 品类），并可查看所有用户数据
+
 ---
 
 ## 三、位置相关 API
 
 ### 3.1 获取位置树（一次性下发）
+
+> **鉴权说明**：本章节所有接口均需要登录，并在请求头携带 `Authorization: Bearer <access_token>`。  
+> 若未登录将返回 `401 Unauthorized`。***
 
 - **URL**：`GET /api/location/tree/`
 - **说明**：
@@ -483,6 +615,8 @@ GET /api/location/nodes/2/goods/?include_children=true
 
 ## 四、谷子检索与详情 API
 
+> **鉴权说明**：本章节所有接口均需要登录，并在请求头携带 `Authorization: Bearer <access_token>`。  
+> 返回的数据已经根据当前用户做了隔离：普通用户只会看到/操作自己的谷子；管理员可查看全部。***
 ### 4.1 谷子列表检索（高性能列表）
 
 - **URL**：`GET /api/goods/`
@@ -1278,6 +1412,9 @@ DELETE /api/goods/abc123/additional-photos/?photo_ids=10,11,12
 ## 五、基础数据 API（CRUD 完整接口）
 
 用于管理基础数据（IP作品、角色、品类）的完整 CRUD 接口。建议在应用启动时预加载列表数据并缓存到前端状态管理（Pinia/Vuex）。
+
+> **鉴权说明**：本章节所有接口均需要登录，并在请求头携带 `Authorization: Bearer <access_token>`。  
+> 额外的写入权限由角色控制：普通用户只能只读访问这些公共元数据；只有 `Admin` 角色可以创建/更新/删除 IP / 角色 / 品类。***
 
 ### 5.1 IP作品 CRUD 接口
 
@@ -2634,6 +2771,8 @@ gender: female
 > 说明：本章节接口用于**从 Bangumi(BGM) API 拉取角色**并**批量写入本系统的 IP / Character 表**。  
 > 这两个接口是**互相独立**的：搜索接口只调用外部 API，不改数据库；创建接口只操作本地数据库，不再调用外部 API。
 
+> **鉴权说明**：本章节所有接口均需要登录，并在请求头携带 `Authorization: Bearer <access_token>`；任意登录用户（User / Admin）均可调用。***
+
 ### 8.1 搜索 IP 作品并获取角色列表
 
 - **URL**：`POST /api/bgm/search-characters/`
@@ -2886,6 +3025,9 @@ gender: female
 - 展柜功能：只显示**用户选择加入展柜的谷子**，用于自定义展示特定谷子
 
 展柜采用结构：**展柜 → 谷子**
+
+> **鉴权说明**：本章节所有接口均需要登录，并在请求头携带 `Authorization: Bearer <access_token>`。  
+> 普通用户仅能管理自己创建的展柜；公开展柜在满足 `is_public=true` 时对其它登录用户只读可见；管理员可查看所有展柜。***
 
 ### 9.1 展柜 CRUD 接口
 

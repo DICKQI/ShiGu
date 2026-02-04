@@ -8,6 +8,13 @@ class StorageNode(models.Model):
     """
 
     name = models.CharField(max_length=50, verbose_name="节点名称")
+    user = models.ForeignKey(
+        "users.User",
+        on_delete=models.CASCADE,
+        related_name="storage_nodes",
+        db_index=True,
+        verbose_name="所属用户",
+    )
     parent = models.ForeignKey(
         "self",
         on_delete=models.CASCADE,

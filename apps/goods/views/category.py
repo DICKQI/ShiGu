@@ -14,6 +14,7 @@ from ..serializers import (
     CategorySimpleSerializer,
     CategoryTreeSerializer,
 )
+from core.permissions import IsAdminOrReadOnly
 
 
 class CategoryViewSet(viewsets.ModelViewSet):
@@ -37,6 +38,7 @@ class CategoryViewSet(viewsets.ModelViewSet):
         "name": ["exact", "icontains"],
         "parent": ["exact", "isnull"],
     }
+    permission_classes = [IsAdminOrReadOnly]
     
     def get_queryset(self):
         """优化查询，预加载父节点和子节点"""
