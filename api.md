@@ -86,6 +86,16 @@
 | `description`| Text，可空        | 主题描述，如：`2024年夏季限定主题`         |
 | `created_at` | DateTime，可空    | 创建时间                                  |
 
+#### `ThemeImage` 主题附加图片表
+
+| 字段名     | 类型           | 说明                                    |
+| ---------- | -------------- | --------------------------------------- |
+| `id`       | Integer (PK)   | 自增主键                                |
+| `theme`    | FK -> `Theme`  | 所属主题                                |
+| `image`    | Image          | 主题附加图片，存储路径：`themes/extra/` |
+| `label`    | Char(100)，可空 | 图片标签，如：海报、物料细节            |
+| `created_at` | DateTime，可空 | 创建时间                                |
+
 #### `Goods` 谷子核心表
 
 | 字段名         | 类型                         | 说明                                                                 |
@@ -2362,11 +2372,28 @@ gender: female
   "id": 1,
   "name": "夏日主题",
   "description": "2024年夏季限定主题",
-  "created_at": "2024-06-01T00:00:00Z"
+  "created_at": "2024-06-01T00:00:00Z",
+  "images": [
+    {
+      "id": 1,
+      "image": "http://example.com/media/themes/extra/xxx.jpg",
+      "label": "海报"
+    },
+    {
+      "id": 2,
+      "image": "http://example.com/media/themes/extra/yyy.jpg",
+      "label": "物料细节"
+    }
+  ]
 }
 ```
 
-**字段说明**：同 5.4.1 响应示例。
+**字段说明**：
+- `id`：主题 ID，用于后续筛选参数。
+- `name`：主题名称。
+- `description`：主题描述（可选）。
+- `created_at`：创建时间。
+- `images`：主题附加图片列表（只读），来源于主题附加图片表；每项包含 `id`、`image`（图片 URL）、`label`（可选标签，如：海报、物料细节）。主题多图的上传与删除请使用下文 5.4.6 的接口。
 
 ---
 
@@ -2471,6 +2498,86 @@ gender: female
 删除 `夏日主题`（id: 1）时：
 - 主题记录被删除
 - 谷子 A 的 `theme` 字段会被设置为 `null`
+
+---
+
+#### 5.4.6 主题附加图片上传与管理
+
+主题支持附加多张图片（如海报、物料细节等）。图片压缩策略与谷子补充图片相同（约 300KB 上限、自动压缩与尺寸缩放）。推荐前端使用本小节接口维护主题素材图。
+
+##### 5.4.6.1 上传/更新主题附加图片
+
+- **URL**：`POST /api/themes/{id}/upload-images/`
+- **说明**：为主题批量上传新图片，或更新已有图片内容/标签。使用 `multipart/form-data`。
+
+##### 路径参数
+
+| 参数名 | 类型 | 说明            |
+| ------ | ---- | --------------- |
+| `id`   | int  | 主题主键 `id`   |
+
+##### 请求体（multipart/form-data）
+
+| 字段名              | 类型     | 必填 | 说明                                                                 |
+| ------------------- | -------- | ---- | -------------------------------------------------------------------- |
+| `additional_photos` | file[]   | 否*  | 图片文件数组，可一次上传多张。*与 `photo_ids` 至少提供其一           |
+| `photo_ids`         | int[]    | 否*  | 图片 ID 数组。与 `additional_photos` 一一对应时表示更新已有图片；仅与 `label` 一起传时表示只更新这些图片的标签。*与 `additional_photos` 至少提供其一 |
+| `label`             | string   | 否   | 统一标签，如：`海报`、`物料细节`。可为空。                            |
+
+**使用场景**：
+1. **仅新增图片**：只传 `additional_photos`（及可选 `label`）。
+2. **更新图片内容与标签**：同时传 `additional_photos` 与 `photo_ids`，数量必须一致，可选 `label`。
+3. **仅更新标签**：只传 `photo_ids` 与 `label`，不传 `additional_photos`。
+
+##### 响应
+
+成功时返回更新后的主题详情（同 5.4.2），其中 `images` 为当前全部主题附加图片列表。
+
+##### 错误响应
+
+- 未提供 `additional_photos` 且未提供 `photo_ids`：`400 Bad Request`，`{"detail": "请提供 additional_photos 文件或 photo_ids 参数"}`。
+- `photo_ids` 与 `additional_photos` 数量不一致：`400 Bad Request`，`{"detail": "photo_ids 数量必须与 additional_photos 数量一致"}`。
+- 某 `photo_id` 不存在或不属于该主题：`400 Bad Request`，`{"detail": "图片 ID xxx 不存在或不属于该主题"}`。
+
+---
+
+##### 5.4.6.2 删除单张主题附加图片
+
+- **URL**：`DELETE /api/themes/{id}/images/{photo_id}/`
+- **说明**：删除指定的一张主题附加图片。
+
+##### 路径参数
+
+| 参数名     | 类型 | 说明                  |
+| ---------- | ---- | --------------------- |
+| `id`       | int  | 主题主键 `id`         |
+| `photo_id` | int  | 主题附加图片主键 `id` |
+
+##### 响应
+
+- **成功**：返回更新后的主题详情（同 5.4.2）。
+- **失败**：`404 Not Found`，附加图片不存在或不属于该主题时返回 `{"detail": "附加图片不存在或不属于该主题"}`。
+
+---
+
+##### 5.4.6.3 批量删除主题附加图片
+
+- **URL**：`DELETE /api/themes/{id}/images/?photo_ids=1,2,3`
+- **说明**：按图片 ID 批量删除主题附加图片。
+
+##### 路径参数与查询参数
+
+| 参数名     | 类型   | 说明                              |
+| ---------- | ------ | --------------------------------- |
+| `id`       | int    | 主题主键（路径）                  |
+| `photo_ids`| string | 查询参数，多个 ID 用逗号分隔，必填 |
+
+##### 响应
+
+- **成功**：返回更新后的主题详情（同 5.4.2）。
+- **失败**：
+  - 未提供 `photo_ids`：`400 Bad Request`，`{"detail": "请提供 photo_ids 查询参数，多个ID用逗号分隔，例如：?photo_ids=1,2,3"}`。
+  - 部分 ID 不存在或不属于该主题：`400 Bad Request`，`{"detail": "以下图片ID不存在或不属于该主题: [xxx]"}`。
 
 ---
 

@@ -224,6 +224,44 @@ class Theme(models.Model):
         return self.name
 
 
+class ThemeImage(models.Model):
+    """
+    主题附加图片表，例如：海报、物料细节等。
+    """
+
+    theme = models.ForeignKey(
+        Theme,
+        on_delete=models.CASCADE,
+        related_name="images",
+        verbose_name="所属主题",
+    )
+    image = models.ImageField(
+        upload_to="themes/extra/",
+        verbose_name="主题附加图片",
+    )
+    label = models.CharField(
+        max_length=100,
+        null=True,
+        blank=True,
+        verbose_name="图片标签",
+        help_text="如：海报、物料细节",
+    )
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        null=True,
+        blank=True,
+        verbose_name="创建时间",
+    )
+
+    class Meta:
+        verbose_name = "主题附加图片"
+        verbose_name_plural = "主题附加图片"
+        ordering = ["created_at"]
+
+    def __str__(self):
+        return f"{self.theme.name} - {self.label or '附加图'}"
+
+
 class Goods(models.Model):
     """
     谷子核心表，关联 IP / 角色 / 品类 / 主题 以及 物理位置 StorageNode。
