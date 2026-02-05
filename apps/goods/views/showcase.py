@@ -3,6 +3,7 @@
 """
 from django.db import transaction
 from django.db.models import Min, Q
+import random
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.parsers import FormParser, MultiPartParser
@@ -99,14 +100,32 @@ class ShowcaseViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["get"], url_path="public", permission_classes=[AllowAny])
     def public_list(self, request):
-        """获取公共展柜列表"""
+        """
+        获取公共展柜列表
+        随机返回 10 条记录，每次刷新结果不同
+        """
         queryset = self.filter_queryset(self.get_queryset())
-        page = self.paginate_queryset(queryset)
-        if page is not None:
-            serializer = self.get_serializer(page, many=True)
-            return self.get_paginated_response(serializer.data)
-        serializer = self.get_serializer(queryset, many=True)
-        return Response(serializer.data)
+
+        # 获取所有符合条件的 ID
+        all_ids = list(queryset.values_list('id', flat=True))
+
+        # 随机抽样 10 个
+        limit = 10
+        if len(all_ids) > limit:
+            selected_ids = random.sample(all_ids, limit)
+        else:
+            selected_ids = all_ids
+
+        # 获取展柜对象
+        selected_showcases = queryset.filter(id__in=selected_ids)
+
+        serializer = self.get_serializer(selected_showcases, many=True)
+        data = list(serializer.data)
+
+        # 再次打乱顺序，确保展示的随机性
+        random.shuffle(data)
+
+        return Response(data)
 
     @action(detail=False, methods=["get"], url_path="private", permission_classes=[IsAuthenticated])
     def private_list(self, request):
