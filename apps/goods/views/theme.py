@@ -11,6 +11,7 @@ from rest_framework.response import Response
 from ..models import Theme, ThemeImage
 from ..serializers import ThemeDetailSerializer, ThemeSimpleSerializer
 from ..utils import compress_image
+from core.permissions import IsOwnerOnly, is_admin
 
 
 class ThemeViewSet(viewsets.ModelViewSet):
@@ -35,6 +36,7 @@ class ThemeViewSet(viewsets.ModelViewSet):
         "name": ["exact", "icontains"],
     }
     parser_classes = (MultiPartParser, FormParser, JSONParser)
+    permission_classes = [IsOwnerOnly]
 
     def get_queryset(self):
         """优化查询，统计关联的谷子数量，详情时预取附加图片"""
@@ -43,6 +45,11 @@ class ThemeViewSet(viewsets.ModelViewSet):
             .annotate(goods_count=Count("goods"))
             .order_by("created_at")
         )
+        user = getattr(self.request, "user", None)
+        if not user or not getattr(user, "id", None):
+            return qs.none()
+        if not is_admin(user):
+            qs = qs.filter(user=user)
         if self.action in ("retrieve", "upload_images", "delete_theme_image", "delete_theme_images"):
             qs = qs.prefetch_related("images")
         return qs
@@ -52,6 +59,9 @@ class ThemeViewSet(viewsets.ModelViewSet):
         if self.action in ("create", "update", "partial_update", "retrieve"):
             return ThemeDetailSerializer
         return ThemeSimpleSerializer
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
 
     @action(
         detail=True,

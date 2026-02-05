@@ -32,6 +32,7 @@ from ..serializers import (
     GoodsMoveSerializer,
 )
 from ..utils import compress_image
+from core.permissions import IsOwnerOnly, is_admin
 
 
 class GoodsPagination(PageNumberPagination):
@@ -163,7 +164,11 @@ class GoodsFilter(FilterSet):
         if not value:
             return queryset
         try:
-            node = StorageNode.objects.get(pk=value)
+            node_qs = StorageNode.objects.all()
+            req_user = getattr(self, "request", None) and getattr(self.request, "user", None)
+            if req_user is not None and not is_admin(req_user):
+                node_qs = node_qs.filter(user=req_user)
+            node = node_qs.get(pk=value)
         except StorageNode.DoesNotExist:
             return queryset.none()
 
@@ -184,6 +189,7 @@ class GoodsViewSet(viewsets.ModelViewSet):
         .select_related("ip", "category", "location", "theme")
         .prefetch_related("characters__ip", "additional_photos")
     )
+    permission_classes = [IsOwnerOnly]
 
     # 列表接口瘦身：只返回必要字段；详情接口使用完整序列化器
     def get_serializer_class(self):
@@ -225,13 +231,17 @@ class GoodsViewSet(viewsets.ModelViewSet):
         """
         使用 select_related / prefetch_related 彻底解决 N+1 查询问题。
         """
-
         qs = (
             Goods.objects.all()
             .select_related("ip", "category", "location", "theme")
             .prefetch_related("characters__ip", "additional_photos")
         )
-        return qs
+        user = getattr(self.request, "user", None)
+        if not user or not getattr(user, "id", None):
+            return qs.none()
+        if is_admin(user):
+            return qs
+        return qs.filter(user=user)
 
     def perform_create(self, serializer):
         """
@@ -247,9 +257,11 @@ class GoodsViewSet(viewsets.ModelViewSet):
         name = validated.get("name")
         purchase_date = validated.get("purchase_date")
         price = validated.get("price")
+        user = self.request.user
 
         # 构建查询条件
         query = Goods.objects.filter(
+            user=user,
             ip=ip,
             name=name,
             purchase_date=purchase_date,
@@ -282,9 +294,13 @@ class GoodsViewSet(viewsets.ModelViewSet):
                     return
 
         # 为新建的谷子分配稀疏的 order：当前最小值 - ORDER_STEP，让新建的谷子排在最前面
-        min_order = Goods.objects.aggregate(min_order=Min("order")).get("min_order")
+        min_order = (
+            Goods.objects.filter(user=user)
+            .aggregate(min_order=Min("order"))
+            .get("min_order")
+        )
         next_order = (min_order or 0) - self.ORDER_STEP
-        serializer.save(order=next_order)
+        serializer.save(user=user, order=next_order)
 
     @action(detail=True, methods=["post"], url_path="move")
     def move(self, request, pk=None):
@@ -293,6 +309,7 @@ class GoodsViewSet(viewsets.ModelViewSet):
         将当前谷子移动到指定锚点谷子的前面或后面。
         """
         current_goods = self.get_object()
+        owner_user = current_goods.user
         serializer = GoodsMoveSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
@@ -305,7 +322,9 @@ class GoodsViewSet(viewsets.ModelViewSet):
                 current_locked = Goods.objects.select_for_update().get(
                     id=current_goods.id
                 )
-                anchor_goods = Goods.objects.select_for_update().get(id=anchor_id)
+                anchor_goods = Goods.objects.select_for_update().get(
+                    id=anchor_id, user=owner_user
+                )
         except Goods.DoesNotExist:
             return Response(
                 {"detail": "锚点谷子不存在"},
@@ -323,7 +342,7 @@ class GoodsViewSet(viewsets.ModelViewSet):
         def _prev_item(obj, exclude_ids):
             """获取 obj 前一个元素（按 ordering）"""
             return (
-                Goods.objects.exclude(id__in=exclude_ids)
+                Goods.objects.filter(user=owner_user).exclude(id__in=exclude_ids)
                 .filter(
                     Q(order__lt=obj.order)
                     | Q(order=obj.order, created_at__gt=obj.created_at)
@@ -340,7 +359,7 @@ class GoodsViewSet(viewsets.ModelViewSet):
         def _next_item(obj, exclude_ids):
             """获取 obj 后一个元素（按 ordering）"""
             return (
-                Goods.objects.exclude(id__in=exclude_ids)
+                Goods.objects.filter(user=owner_user).exclude(id__in=exclude_ids)
                 .filter(
                     Q(order__gt=obj.order)
                     | Q(order=obj.order, created_at__lt=obj.created_at)
@@ -360,7 +379,9 @@ class GoodsViewSet(viewsets.ModelViewSet):
             仅重排局部窗口，避免大范围更新。
             """
             before_qs = (
-                Goods.objects.exclude(id__in=exclude_ids | {center.id})
+                Goods.objects.filter(user=owner_user).exclude(
+                    id__in=exclude_ids | {center.id}
+                )
                 .filter(
                     Q(order__lt=center.order)
                     | Q(order=center.order, created_at__gt=center.created_at)
@@ -369,7 +390,9 @@ class GoodsViewSet(viewsets.ModelViewSet):
                 .order_by("-order", "created_at", "-id")[:window]
             )
             after_qs = (
-                Goods.objects.exclude(id__in=exclude_ids | {center.id})
+                Goods.objects.filter(user=owner_user).exclude(
+                    id__in=exclude_ids | {center.id}
+                )
                 .filter(
                     Q(order__gt=center.order)
                     | Q(order=center.order, created_at__lt=center.created_at)
@@ -409,10 +432,10 @@ class GoodsViewSet(viewsets.ModelViewSet):
 
         with transaction.atomic():
             # 重新加锁防止与上面 select_for_update 间隔（事务块）
-            current_locked = Goods.objects.select_for_update().get(
-                id=current_goods.id
+            current_locked = Goods.objects.select_for_update().get(id=current_goods.id)
+            anchor_locked = Goods.objects.select_for_update().get(
+                id=anchor_id, user=owner_user
             )
-            anchor_locked = Goods.objects.select_for_update().get(id=anchor_id)
 
             if position == "before":
                 prev_obj = _prev_item(anchor_locked, exclude_ids={current_locked.id})

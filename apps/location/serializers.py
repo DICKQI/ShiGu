@@ -1,9 +1,16 @@
 from rest_framework import serializers
 
 from .models import StorageNode
+from core.permissions import is_admin
 
 
 class StorageNodeSerializer(serializers.ModelSerializer):
+    parent = serializers.PrimaryKeyRelatedField(
+        queryset=StorageNode.objects.all(),
+        required=False,
+        allow_null=True,
+        help_text="父节点 ID，顶层节点为 null",
+    )
     path_name = serializers.CharField(
         required=False,
         allow_blank=True,
@@ -13,6 +20,16 @@ class StorageNodeSerializer(serializers.ModelSerializer):
     class Meta:
         model = StorageNode
         fields = ("id", "name", "parent", "path_name", "order", "image", "description")
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        request = self.context.get("request")
+        user = getattr(request, "user", None) if request is not None else None
+        if user is None or not getattr(user, "id", None):
+            return
+        if is_admin(user):
+            return
+        self.fields["parent"].queryset = StorageNode.objects.filter(user=user)
 
     def create(self, validated_data):
         """创建节点时，如果未提供 path_name，则根据父节点自动生成"""

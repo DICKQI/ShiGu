@@ -9,6 +9,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from ..models import IP
+from core.permissions import IsAdminOrReadOnly
 from ..serializers import (
     IPBatchUpdateOrderSerializer,
     IPDetailSerializer,
@@ -37,6 +38,7 @@ class IPViewSet(viewsets.ModelViewSet):
         "name": ["exact", "icontains"],
         "subject_type": ["exact", "in"],  # exact: 精确匹配，in: 多值筛选（逗号分隔）
     }
+    permission_classes = [IsAdminOrReadOnly]
 
     def get_queryset(self):
         """优化查询，预加载关键词并统计角色数量"""

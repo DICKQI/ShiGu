@@ -4,6 +4,8 @@
 from rest_framework import serializers
 
 from ..models import Category, Character, Goods, GuziImage, IP, Theme
+from apps.location.models import StorageNode
+from core.permissions import is_admin
 from ..utils import compress_image
 from .category import CategorySimpleSerializer
 from .character import CharacterSimpleSerializer
@@ -108,6 +110,12 @@ class GoodsDetailSerializer(serializers.ModelSerializer):
         allow_null=True,
         help_text="主题ID（可选）",
     )
+    location = serializers.PrimaryKeyRelatedField(
+        queryset=StorageNode.objects.all(),
+        required=False,
+        allow_null=True,
+        help_text="位置节点ID（可选）",
+    )
     location_path = serializers.SerializerMethodField()
     additional_photos = GuziImageSerializer(many=True, read_only=True)
 
@@ -138,6 +146,19 @@ class GoodsDetailSerializer(serializers.ModelSerializer):
             "additional_photos",
             "order",  # 自定义排序值
         )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        request = self.context.get("request")
+        user = getattr(request, "user", None) if request is not None else None
+        if user is None or not getattr(user, "id", None):
+            return
+        if is_admin(user):
+            return
+
+        # 私有外键只允许指向当前用户的数据，避免越权关联
+        self.fields["theme_id"].queryset = Theme.objects.filter(user=user)
+        self.fields["location"].queryset = StorageNode.objects.filter(user=user)
 
     def get_location_path(self, obj):
         if obj.location:

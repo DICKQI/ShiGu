@@ -7,6 +7,7 @@ from apps.goods.serializers import GoodsListSerializer
 
 from .models import StorageNode
 from .serializers import StorageNodeSerializer, StorageNodeTreeSerializer
+from core.permissions import IsOwnerOnly, is_admin
 
 
 class StorageNodeListCreateView(generics.ListCreateAPIView):
@@ -17,6 +18,19 @@ class StorageNodeListCreateView(generics.ListCreateAPIView):
 
     queryset = StorageNode.objects.all().order_by("order", "id")
     serializer_class = StorageNodeSerializer
+    permission_classes = [IsOwnerOnly]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        user = getattr(self.request, "user", None)
+        if not user or not getattr(user, "id", None):
+            return qs.none()
+        if is_admin(user):
+            return qs
+        return qs.filter(user=user)
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
 
 
 class StorageNodeDetailView(generics.RetrieveUpdateDestroyAPIView):
@@ -30,10 +44,17 @@ class StorageNodeDetailView(generics.RetrieveUpdateDestroyAPIView):
 
     queryset = StorageNode.objects.all()
     serializer_class = StorageNodeSerializer
+    permission_classes = [IsOwnerOnly]
 
     def get_queryset(self):
         """优化查询，预加载父节点和子节点"""
-        return StorageNode.objects.select_related("parent").prefetch_related("children")
+        qs = StorageNode.objects.select_related("parent").prefetch_related("children")
+        user = getattr(self.request, "user", None)
+        if not user or not getattr(user, "id", None):
+            return qs.none()
+        if is_admin(user):
+            return qs
+        return qs.filter(user=user)
 
     def get_all_descendants(self, node):
         """
@@ -64,7 +85,7 @@ class StorageNodeDetailView(generics.RetrieveUpdateDestroyAPIView):
         # 虽然 Goods 的 location 使用了 on_delete=models.SET_NULL，
         # 但为了确保在删除前显式处理，我们先取消关联
         from apps.goods.models import Goods
-        Goods.objects.filter(location_id__in=node_ids).update(location=None)
+        Goods.objects.filter(user=instance.user, location_id__in=node_ids).update(location=None)
         
         # 删除根节点（由于 parent 字段使用了 on_delete=models.CASCADE，
         # 删除父节点时，Django 会自动删除所有子节点）
@@ -82,6 +103,16 @@ class StorageNodeTreeView(generics.ListAPIView):
 
     queryset = StorageNode.objects.all().order_by("path_name", "order")
     serializer_class = StorageNodeTreeSerializer
+    permission_classes = [IsOwnerOnly]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        user = getattr(self.request, "user", None)
+        if not user or not getattr(user, "id", None):
+            return qs.none()
+        if is_admin(user):
+            return qs
+        return qs.filter(user=user)
 
 
 class StorageNodeGoodsView(generics.ListAPIView):
@@ -93,6 +124,7 @@ class StorageNodeGoodsView(generics.ListAPIView):
     """
 
     serializer_class = GoodsListSerializer
+    permission_classes = [IsOwnerOnly]
 
     def get_queryset(self):
         """
@@ -103,7 +135,10 @@ class StorageNodeGoodsView(generics.ListAPIView):
         include_children = self.request.query_params.get("include_children", "false").lower() == "true"
 
         try:
-            node = StorageNode.objects.get(pk=node_id)
+            node_qs = StorageNode.objects.all()
+            if not is_admin(self.request.user):
+                node_qs = node_qs.filter(user=self.request.user)
+            node = node_qs.get(pk=node_id)
         except StorageNode.DoesNotExist:
             return Goods.objects.none()
 
@@ -117,8 +152,12 @@ class StorageNodeGoodsView(generics.ListAPIView):
             node_ids = [node.id]
 
         # 查询商品，使用优化查询避免 N+1 问题
+        goods_qs = Goods.objects.all()
+        if not is_admin(self.request.user):
+            goods_qs = goods_qs.filter(user=self.request.user)
+
         queryset = (
-            Goods.objects.filter(location_id__in=node_ids)
+            goods_qs.filter(location_id__in=node_ids)
             .select_related("ip", "category", "location")
             .prefetch_related("characters__ip", "additional_photos")
             .order_by("-created_at")

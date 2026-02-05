@@ -159,10 +159,59 @@
 
 ---
 
+### 1.3 用户模块（`apps.users`）
+
+#### `Role` 角色表
+
+用于标识系统内的角色，例如：`admin`（管理员）、`user`（普通用户）等。
+
+| 字段名      | 类型             | 说明                         |
+| ----------- | ---------------- | ---------------------------- |
+| `id`        | Integer (PK)     | 自增主键                     |
+| `name`      | Char(50), 唯一, 索引 | 角色名称，如：`admin`、`user` |
+| `created_at`| DateTime         | 创建时间                     |
+
+> 说明：当前版本中，**是否为管理员**由 `User.role.name` 是否等于 `"admin"` 判断（区分大小写前会统一转为小写）。
+
+#### `User` 用户表
+
+系统自建的用户表，不继承 Django 自带 `auth_user`。所有业务数据（如谷子、展柜、收纳位置等）的“所属用户”字段都指向该表。
+
+| 字段名      | 类型                 | 说明                                                                 |
+| ----------- | -------------------- | -------------------------------------------------------------------- |
+| `id`        | Integer (PK)         | 自增主键                                                             |
+| `username`  | Char(150), 唯一, 索引| 登录用户名，唯一；建议只包含字母、数字、下划线，不区分大小写逻辑由上层控制 |
+| `password`  | Char(255)            | **密码哈希**（使用 Django 内置加密算法存储，接口永不返回原文密码）   |
+| `role`      | FK -> `Role`         | 用户角色，配合 RBAC 控制权限；删除角色时被 `PROTECT`，无法误删      |
+| `is_active` | Boolean              | 是否启用该账号，默认 `true`；禁用后无法登录                          |
+| `created_at`| DateTime             | 创建时间                                                             |
+| `updated_at`| DateTime             | 最近更新时间                                                         |
+
+> 补充：
+> - 模型内部提供 `set_password(raw_password)` / `check_password(raw_password)` 方法，统一处理密码加密与校验。
+> - 为了兼容 DRF 的认证逻辑，`User` 实现了只读属性 `is_authenticated`，永远返回 `true`（只要通过认证中间件拿到的就是已登录用户）。
+
+#### `Permission` 权限表（预留）
+
+用于预留更细粒度的权限控制，目前版本主要仍以角色维度（`Role`）结合策略控制，尚未在业务接口中直接使用该表。
+
+| 字段名      | 类型             | 说明                         |
+| ----------- | ---------------- | ---------------------------- |
+| `id`        | Integer (PK)     | 自增主键                     |
+| `code`      | Char(100), 唯一, 索引 | 权限编码，如：`goods.view`、`goods.edit` 等 |
+| `name`      | Char(100)        | 权限名称，便于后台管理展示   |
+| `created_at`| DateTime         | 创建时间                     |
+
+---
+
 ## 二、鉴权与通用说明
 
-当前项目为内网 / 个人系统示例，API 暂不强制鉴权。
-若后期需要接入登录态，可在 DRF 中配置 `DEFAULT_AUTHENTICATION_CLASSES` 并统一在 Header 携带 Token。
+当前版本已接入 **自建用户体系 + JWT Token 鉴权**，所有业务接口默认要求登录。
+
+- **认证方式**：HTTP Header 携带 `Authorization: Bearer <access_token>`
+- **获取 Token**：通过账号注册/登录接口获取 `access_token`
+- **未登录/Token 无效**：除登录/注册接口外，访问任意 API 将返回 `401 Unauthorized`
+- **登出语义**：当前版本采用**无状态 JWT**，服务端不维护会话或 Token 黑名单；调用登出接口仅表示前端应删除本地缓存的 Token，一旦 Token 泄露，在过期前仍可能被他方使用
 
 错误响应统一使用 DRF 默认格式，例如：
 
@@ -172,11 +221,165 @@
 }
 ```
 
+以及未认证示例：
+
+```json
+{
+  "detail": "Authentication credentials were not provided."
+}
+```
+
+--- 
+
+### 2.1 账号注册（获取 Token）
+
+- **URL**：`POST /api/auth/register/`
+- **说明**：
+  - 创建新用户并返回用于后续调用的 `access_token`
+  - 注册成功后无需再单独登录，可直接使用返回的 Token 调用其它接口
+- **是否需要携带 Authorization**：否
+
+#### 请求体（JSON）
+
+```json
+{
+  "username": "test1",
+  "password": "12345678"
+}
+```
+
+字段说明：
+
+| 字段名     | 类型   | 必填 | 说明                 |
+| ---------- | ------ | ---- | -------------------- |
+| `username` | string | 是   | 登录用户名（唯一）   |
+| `password` | string | 是   | 登录密码，最少 6 位  |
+
+#### 响应示例
+
+```json
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9....",
+  "token_type": "Bearer",
+  "expires_in": 604800
+}
+```
+
+字段说明：
+
+| 字段名         | 类型   | 说明                                      |
+| -------------- | ------ | ----------------------------------------- |
+| `access_token` | string | JWT Token，后续通过 Authorization 传入   |
+| `token_type`   | string | 固定为 `"Bearer"`                         |
+| `expires_in`   | int    | 过期时间（秒），默认 7 天                 |
+
+---
+
+### 2.2 账号登录（获取 Token）
+
+- **URL**：`POST /api/auth/login/`
+- **说明**：使用已注册的账号密码获取新的 `access_token`
+- **是否需要携带 Authorization**：否
+
+#### 请求体（JSON）
+
+```json
+{
+  "username": "test1",
+  "password": "12345678"
+}
+```
+
+字段说明同 2.1。
+
+#### 响应示例
+
+与注册接口相同：
+
+```json
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9....",
+  "token_type": "Bearer",
+  "expires_in": 604800
+}
+```
+
+> 前端推荐：将 `access_token` 缓存到本地（如 LocalStorage），并在所有后续请求的 Header 中附加：
+>
+> ```http
+> Authorization: Bearer <access_token>
+> ```
+
+---
+
+### 2.3 获取当前登录用户信息
+
+- **URL**：`GET /api/auth/me/`
+- **说明**：根据 Header 中携带的 Token 返回当前登录用户的基础信息
+- **是否需要携带 Authorization**：是
+
+#### 请求头
+
+```http
+Authorization: Bearer <access_token>
+```
+
+#### 响应示例
+
+```json
+{
+  "id": 1,
+  "username": "test1",
+  "role": "User"
+}
+```
+
+字段说明：
+
+| 字段名     | 类型   | 说明             |
+| ---------- | ------ | ---------------- |
+| `id`       | int    | 用户 ID          |
+| `username` | string | 用户名           |
+| `role`     | string | 角色名称：`User` / `Admin` |
+
+> 角色说明：
+>
+> - `User`：普通用户，只能访问/修改自己的私有数据（Goods / Theme / Showcase / StorageNode）
+> - `Admin`：管理员，可管理公共元数据（IP / 角色 / 品类），并可查看所有用户数据
+
+---
+
+### 2.4 账号登出
+
+- **URL**：`DELETE /api/auth/logout/`
+- **说明**：
+  - 使用当前请求头中的 JWT Token 执行“登出”动作
+  - 由于后端采用无状态 JWT，本接口不会在服务端持久化会话或写入黑名单
+  - 前端在该接口返回成功（204）后，**必须删除本地缓存的 Token**（如 LocalStorage 中的 `access_token`）
+- **是否需要携带 Authorization**：是
+
+#### 请求头
+
+```http
+Authorization: Bearer <access_token>
+```
+
+#### 响应
+
+- 成功：
+  - 状态码：`204 No Content`
+  - 响应体：无（空响应体）
+- 失败：
+  - 未携带或 Token 无效时，由全局认证返回 `401 Unauthorized`，错误格式同前文“鉴权与通用说明”中的示例
+
 ---
 
 ## 三、位置相关 API
 
 ### 3.1 获取位置树（一次性下发）
+
+> **鉴权说明**：本章节所有接口均需要登录，并在请求头携带 `Authorization: Bearer <access_token>`。  
+> 若未登录将返回 `401 Unauthorized`。***
 
 - **URL**：`GET /api/location/tree/`
 - **说明**：
@@ -483,6 +686,8 @@ GET /api/location/nodes/2/goods/?include_children=true
 
 ## 四、谷子检索与详情 API
 
+> **鉴权说明**：本章节所有接口均需要登录，并在请求头携带 `Authorization: Bearer <access_token>`。  
+> 返回的数据已经根据当前用户做了隔离：普通用户只会看到/操作自己的谷子；管理员可查看全部。***
 ### 4.1 谷子列表检索（高性能列表）
 
 - **URL**：`GET /api/goods/`
@@ -1278,6 +1483,9 @@ DELETE /api/goods/abc123/additional-photos/?photo_ids=10,11,12
 ## 五、基础数据 API（CRUD 完整接口）
 
 用于管理基础数据（IP作品、角色、品类）的完整 CRUD 接口。建议在应用启动时预加载列表数据并缓存到前端状态管理（Pinia/Vuex）。
+
+> **鉴权说明**：本章节所有接口均需要登录，并在请求头携带 `Authorization: Bearer <access_token>`。  
+> 额外的写入权限由角色控制：普通用户只能只读访问这些公共元数据；只有 `Admin` 角色可以创建/更新/删除 IP / 角色 / 品类。***
 
 ### 5.1 IP作品 CRUD 接口
 
@@ -2634,6 +2842,8 @@ gender: female
 > 说明：本章节接口用于**从 Bangumi(BGM) API 拉取角色**并**批量写入本系统的 IP / Character 表**。  
 > 这两个接口是**互相独立**的：搜索接口只调用外部 API，不改数据库；创建接口只操作本地数据库，不再调用外部 API。
 
+> **鉴权说明**：本章节所有接口均需要登录，并在请求头携带 `Authorization: Bearer <access_token>`；任意登录用户（User / Admin）均可调用。***
+
 ### 8.1 搜索 IP 作品并获取角色列表
 
 - **URL**：`POST /api/bgm/search-characters/`
@@ -2886,6 +3096,9 @@ gender: female
 - 展柜功能：只显示**用户选择加入展柜的谷子**，用于自定义展示特定谷子
 
 展柜采用结构：**展柜 → 谷子**
+
+> **鉴权说明**：本章节所有接口均需要登录，并在请求头携带 `Authorization: Bearer <access_token>`。  
+> 普通用户仅能管理自己创建的展柜；公开展柜在满足 `is_public=true` 时对其它登录用户只读可见；管理员可查看所有展柜。***
 
 ### 9.1 展柜 CRUD 接口
 

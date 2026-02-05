@@ -45,7 +45,8 @@ INSTALLED_APPS = [
     'drf_spectacular',
     # 本地应用
     "apps.goods.apps.GoodsConfig",
-    "apps.location.apps.LocationConfig"
+    "apps.location.apps.LocationConfig",
+    "apps.users.apps.UsersConfig",
 ]
 
 MIDDLEWARE = [
@@ -136,6 +137,13 @@ MEDIA_ROOT = BASE_DIR / 'media'
 
 # DRF 统一配置
 REST_FRAMEWORK = {
+    # 默认要求登录（auth 相关接口会单独 AllowAny）
+    "DEFAULT_AUTHENTICATION_CLASSES": [
+        "core.authentication.JWTAuthentication",
+    ],
+    "DEFAULT_PERMISSION_CLASSES": [
+        "rest_framework.permissions.IsAuthenticated",
+    ],
     "DEFAULT_FILTER_BACKENDS": [
         "django_filters.rest_framework.DjangoFilterBackend",
         "rest_framework.filters.SearchFilter",
@@ -151,6 +159,10 @@ REST_FRAMEWORK = {
     # 指定使用的 Schema 类
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
 }
+
+# JWT 配置
+JWT_SECRET = SECRET_KEY
+JWT_ACCESS_TTL_SECONDS = 7 * 24 * 3600
 SPECTACULAR_SETTINGS = {
     'TITLE': 'SHIGU API',
     'DESCRIPTION': 'SHIGU API Documentation',

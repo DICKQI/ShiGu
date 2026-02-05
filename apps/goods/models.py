@@ -191,9 +191,15 @@ class Theme(models.Model):
 
     name = models.CharField(
         max_length=100,
-        unique=True,
         db_index=True,
         verbose_name="主题名称",
+    )
+    user = models.ForeignKey(
+        "users.User",
+        on_delete=models.CASCADE,
+        related_name="themes",
+        db_index=True,
+        verbose_name="所属用户",
     )
     DESCRIPTION_DEFAULT = (
         "店铺：\n"
@@ -219,6 +225,7 @@ class Theme(models.Model):
         verbose_name = "主题"
         verbose_name_plural = "主题"
         ordering = ["created_at"]
+        unique_together = ("user", "name")
 
     def __str__(self):
         return self.name
@@ -278,6 +285,13 @@ class Goods(models.Model):
         max_length=200,
         db_index=True,
         verbose_name="谷子名称",
+    )
+    user = models.ForeignKey(
+        "users.User",
+        on_delete=models.CASCADE,
+        related_name="goods",
+        db_index=True,
+        verbose_name="所属用户",
     )
 
     # 多维关联
@@ -428,6 +442,13 @@ class Showcase(models.Model):
         max_length=200,
         db_index=True,
         verbose_name="展柜名称",
+    )
+    user = models.ForeignKey(
+        "users.User",
+        on_delete=models.CASCADE,
+        related_name="showcases",
+        db_index=True,
+        verbose_name="所属用户",
     )
     description = models.TextField(
         null=True,
