@@ -5,13 +5,28 @@
 > 一套面向「吃谷人」的个人谷子资产管理与检索系统
 
 [![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://www.python.org/)
-[![Django](https://img.shields.io/badge/Django-6.0+-green.svg)](https://www.djangoproject.com/)
+[![Django](https://img.shields.io/badge/Django-5.2+-green.svg)](https://www.djangoproject.com/)
 [![DRF](https://img.shields.io/badge/DRF-3.14+-red.svg)](https://www.django-rest-framework.org/)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 [功能特性](#-核心特性) • [项目架构](#-项目架构) • [快速开始](#-快速开始) • [API 文档](#-api-说明) • [代码结构](#-代码结构)
 
 </div>
+
+---
+
+## 🌍 English Overview
+
+**ShiGu** is a focused inventory and location management system for anime / game merch collectors. It provides:
+
+- A rich **goods model** linking IP, character (M2M), category and physical storage location
+- High‑performance **search & filter APIs** with index‑friendly fields and basic idempotent create logic
+- A tree‑like **storage node model** to describe real‑world spaces (room → cabinet → shelf → drawer)
+- **IP keyword system** for enhanced search experience
+- **Automatic image compression** to optimize storage usage
+- **BGM API integration** for quick IP and character data import
+
+The name **ShiGu** plays on the Chinese words for "eating merch" (吃谷) and "picking up / collecting" (拾谷), emphasizing both the emotional side of collecting and the structured act of organizing your collection.
 
 ---
 
@@ -26,9 +41,8 @@
                                       │  核心业务模块 (Apps)           │
                                       ├──────────────────────────────┤
                                       │ 🔐 Users (认证/数据隔离)      │
-                                      │ 📦 Goods (资产管理)           │
+                                      │ 📦 Goods (资产管理+BGM集成)           │
                                       │ 📍 Location (物理收纳)        │
-                                      │ 🤖 BGM (第三方集成)           │
                                       └──────────────┬───────────────┘
                                                      │
                ┌─────────────────────────────────────┴────────────────┐
@@ -41,7 +55,7 @@
 ```
 
 ### 数据流说明
-1. **身份认证**：用户通过 `/api/users/login/` 获取 JWT，后续所有受限请求需携带 `Authorization: Bearer <token>`。
+1. **身份认证**：用户通过 `/api/auth/login/` 获取 JWT，后续所有受限请求需携带 `Authorization: Bearer <token>`。
 2. **多用户隔离**：所有业务模型（Goods, StorageNode, etc.）均关联 `user` 字段，后端通过 `IsOwnerOnly` 权限类和 QuerySet 过滤实现物理层隔离。
 3. **第三方集成**：BGM 集成采用两步搜索流程，先搜索作品（Subject），再根据作品 ID 拉取角色（Character），最后选择性同步至本地。
 
@@ -49,7 +63,7 @@
 
 ## 📖 项目简介
 
-**拾谷（ShiGu）** 是一套基于 **Django 6 + Django REST Framework** 构建的谷子（动漫/游戏周边商品）资产管理系统。专为「吃谷人」打造，帮助用户高效管理、检索和定位个人收藏。
+**拾谷（ShiGu）** 是一套基于 **Django 5.2 + Django REST Framework** 构建的谷子（动漫/游戏周边商品）资产管理系统。专为「吃谷人」打造，帮助用户高效管理、检索和定位个人收藏。
 
 ### 核心价值
 
@@ -124,21 +138,23 @@
 - **类型分类**：支持作品类型字段（`subject_type`），包括书籍、动画、音乐、游戏、三次元/特摄
 - **类型过滤**：支持按作品类型进行筛选和统计
 
+> 以上特性的技术实现细节见 [实现细节](#-实现细节与使用注意)。
+
 ---
 
 ## 📑 目录
 
+- [项目架构](#-项目架构)
 - [项目简介](#-项目简介)
 - [核心特性](#-核心特性)
-- [项目架构](#-项目架构)
 - [功能概览](#-功能概览)
 - [技术栈](#️-技术栈)
 - [代码结构](#-代码结构)
 - [快速开始](#-快速开始)
 - [API 说明](#-api-说明)
+- [部署指南](#-部署指南)
 - [实现细节](#-实现细节与使用注意)
 - [项目亮点](#-项目亮点)
-- [部署指南](#-部署指南)
 - [未来规划](#-todo--未来规划)
 - [贡献指南](#-贡献指南)
 
@@ -181,9 +197,13 @@
   - `order`：自定义排序值（BigInteger），支持拖拽排序功能
 - **`GuziImage`**：谷子补充图片表，支持标签分类
 - **`Theme`**：主题表，用于对谷子进行「主题维度」的聚合（例如角色生日、活动主题等）
+- **`ThemeImage`**：主题附加图片表，支持标签分类（如海报、物料细节）
 - **`Showcase` / `ShowcaseGoods`**：展柜与展柜-谷子关联表，用于定义「一组要一起展示的谷子」
 
 #### API 接口
+
+> 以下为功能概要，完整接口细节和请求/响应示例请参考 [API 说明](#-api-说明) 或 [`api.md`](api.md)。
+
 - **基础数据 CRUD**
   - `IPViewSet`：IP 作品的完整 CRUD，支持关键词管理和作品类型过滤
   - `CharacterViewSet`：角色的完整 CRUD，支持按 IP 过滤和搜索
@@ -205,7 +225,7 @@
   - `ShowcaseViewSet`：展柜 CRUD，支持为展柜关联多件谷子以及排序
 - **BGM API 集成**
   - `POST /api/bgm/search-subjects/`：搜索 IP 作品列表（第一步：确定作品）
-  - `POST /api/bgm/get-characters-by-subject-id/`：获取指定作品下的角色列表（第二步：选择角色）
+  - `POST /api/bgm/get-characters-by-id/`：获取指定作品下的角色列表（第二步：选择角色）
   - `POST /api/bgm/create-characters/`：将选择的角色及关联 IP 批量同步到本地数据库
 
 ### 物理收纳空间管理（`apps.location`）
@@ -227,7 +247,7 @@
 
 ## 🛠️ 技术栈
 
-- **后端框架**：Django 6.0+
+- **后端框架**：Django 5.2+
 - **API 框架**：Django REST Framework 3.14+
 - **数据库**：SQLite（开发环境，生产环境可切换 PostgreSQL/MySQL）
 - **API 文档**：drf-spectacular（提供 OpenAPI Schema / Swagger UI / Redoc）
@@ -258,7 +278,7 @@ ShiGu/
 │   │   └── views.py         # 认证相关视图函数
 │   │
 │   ├── goods/               # 谷子核心域模型及 API
-│   │   ├── models.py        # IP / IPKeyword / Character / Category / Theme / Goods / GuziImage / Showcase / ShowcaseGoods
+│   │   ├── models.py        # IP / IPKeyword / Character / Category / Theme / ThemeImage / Goods / GuziImage / Showcase / ShowcaseGoods
 │   │   ├── serializers/     # 序列化器模块（按功能拆分）
 │   │   │   ├── __init__.py  # 统一导出
 │   │   │   ├── ip.py        # IP 相关序列化器
@@ -286,10 +306,20 @@ ShiGu/
 │   │   ├── admin.py         # Django Admin 后台管理配置
 │   │   └── signals.py       # 信号处理（如需要）
 │   │
-│   └── location/            # 物理收纳节点模型及 API
+│   ├── location/            # 物理收纳节点模型及 API
 │       ├── models.py        # 自关联 StorageNode
 │       ├── serializers.py   # 基础与树结构序列化器
 │       └── views.py         # 列表/创建/详情/更新/删除/树结构/商品查询视图
+│   │
+│   └── admin_api/           # 后台管理 REST API（仅管理员 JWT）
+│       ├── views.py         # AdminUserViewSet / AdminRoleViewSet
+│       ├── serializers.py   # Admin 专用序列化器
+│       └── urls.py          # /api/admin/ 路由
+│
+├── core/                    # 共享框架（JWT、认证、权限）
+│   ├── jwt.py               # HS256 JWT 编码/解码
+│   ├── authentication.py    # JWTAuthentication DRF 认证类
+│   └── permissions.py       # IsAdmin / IsOwnerOnly / IsOwnerOrPublicReadOnly
 │
 ├── gunicorn_config.py       # Gunicorn 生产环境配置文件
 ├── manage.sh                # 生产环境服务管理脚本（启动/停止/重启等）
@@ -300,7 +330,6 @@ ShiGu/
 │       ├── main/           # 主图
 │       └── extra/           # 补充图片
 │
-├── templates/               # 模板目录（可扩展为后台管理/文档展示）
 ├── db.sqlite3              # SQLite 数据库（开发环境）
 ├── requirements.txt        # Python 依赖列表
 ├── api.md                  # 完整 API 文档
@@ -313,7 +342,7 @@ ShiGu/
 
 ### 环境要求
 
-- **Python**: 3.11+（推荐与 Django 6.0 匹配的版本）
+- **Python**: 3.11+（推荐与 Django 5.2 匹配的版本）
 - **数据库**: SQLite（开发环境，生产环境支持 PostgreSQL/MySQL）
 - **包管理**: pip / venv / poetry 等虚拟环境管理工具
 
@@ -364,6 +393,9 @@ DATABASE_URL=postgresql://user:password@localhost:5432/shiGu_db
 # JWT 配置
 JWT_SECRET=your-jwt-secret-key
 JWT_ACCESS_TTL_SECONDS=604800
+
+# BGM API 配置（可选，用于导入角色数据）
+BGM_ACCESS_TOKEN=your-bangumi-access-token
 ```
 
 #### 5. 数据库迁移
@@ -387,9 +419,10 @@ python manage.py createsuperuser
 
 如需使用 BGM API 导入角色数据功能：
 
-1. 在 `apps/goods/bgm_service.py` 中修改 `ACCESS_TOKEN` 变量
-2. 获取 Token：访问 [Bangumi API 文档](https://bangumi.github.io/api/) 申请个人访问令牌
-3. 如不配置 Token，BGM API 功能仍可使用，但可能受到请求频率限制
+1. **安全警告**：代码仓库中的默认 Token 已公开泄露，请立即在 [Bangumi 开发者中心](https://bgm.tv/dev) 申请个人 Access Token 并替换。
+2. 设置环境变量 `BGM_ACCESS_TOKEN` 或在 `apps/goods/bgm_service.py` 中配置 `ACCESS_TOKEN`
+3. 切勿将包含真实 Token 的代码提交到公开仓库
+4. 如不配置 Token，BGM API 功能仍可使用，但可能受到请求频率限制
 
 #### 8. 启动开发服务器
 
@@ -402,8 +435,10 @@ python manage.py runserver
 - **Django Admin**：`http://127.0.0.1:8000/admin/`
 - **API 根路径**：`http://127.0.0.1:8000/api/`
 - **BGM API**：
-  - `POST /api/bgm/search-characters/`
-  - `POST /api/bgm/create-characters/`
+  - `POST /api/bgm/search-subjects/`（第一步：搜索作品）
+  - `POST /api/bgm/get-characters-by-id/`（第二步：获取角色）
+  - `POST /api/bgm/search-characters/`（一步式搜索，兼容保留）
+  - `POST /api/bgm/create-characters/`（批量同步到本地）
 - **完整 API 文档**：参考 [`api.md`](api.md)
 
 #### 9. 验证安装
@@ -452,17 +487,25 @@ python manage.py rebalance_goods_order --step 2000 --batch-size 1000
 | | `/api/categories/tree/` | 品类树结构 |
 | | `/api/categories/batch-update-order/` | 批量更新品类排序 |
 | **谷子管理** | `/api/goods/` | 谷子检索与 CRUD（支持分页） |
+| | `/api/goods/stats/` | 仪表盘统计数据 |
+| | `/api/goods/similar-random/` | 相似谷子随机展示 |
 | | `/api/goods/{id}/move/` | 调整谷子排序 |
 | | `/api/goods/{id}/upload-main-photo/` | 上传主图 |
 | | `/api/goods/{id}/upload-additional-photos/` | 上传补充图片（支持批量） |
 | **主题管理** | `/api/themes/` | 主题 CRUD，按主题聚合谷子 |
+| | `/api/themes/{id}/upload-images/` | 上传主题图片 |
 | **展柜管理** | `/api/showcases/` | 展柜 CRUD |
+| | `/api/showcases/public/` | 公共展柜列表（无需登录） |
+| | `/api/showcases/private/` | 我的展柜列表 |
 | | `/api/showcases/{id}/goods/` | 管理展柜下关联的谷子（增删 / 排序） |
+| | `/api/showcases/{id}/add-goods/` | 添加谷子到展柜 |
+| | `/api/showcases/{id}/remove-goods/` | 从展柜移除谷子 |
+| | `/api/showcases/{id}/upload-cover-image/` | 上传展柜封面 |
 | **位置管理** | `/api/location/nodes/` | 收纳节点 CRUD |
 | | `/api/location/tree/` | 位置树结构 |
 | | `/api/location/nodes/{id}/goods/` | 节点下商品查询 |
 | **BGM 集成** | `/api/bgm/search-subjects/` | 搜索作品列表 |
-| | `/api/bgm/get-characters-by-subject-id/` | 获取作品角色 |
+| | `/api/bgm/get-characters-by-id/` | 获取作品角色 |
 | | `/api/bgm/create-characters/` | 批量同步到本地 |
 
 ### 认证中心
@@ -565,6 +608,9 @@ DATABASE_URL=postgresql://user:password@localhost:5432/shiGu_db
 
 # CORS 配置
 CORS_ALLOWED_ORIGINS=https://your-frontend-domain.com
+
+# BGM API 配置（可选，用于导入角色数据）
+BGM_ACCESS_TOKEN=your-bangumi-access-token
 ```
 
 #### 2. 数据库迁移
@@ -866,21 +912,6 @@ CMD ["gunicorn", "ShiGu.wsgi:application", "--bind", "0.0.0.0:8000"]
 - [Django](https://www.djangoproject.com/) - Web 框架
 - [Django REST Framework](https://www.django-rest-framework.org/) - RESTful API 框架
 - [Bangumi API](https://bangumi.github.io/api/) - 动漫数据来源
-
----
-
-## 🌍 English Overview
-
-**ShiGu** is a focused inventory and location management system for anime / game merch collectors. It provides:
-
-- A rich **goods model** linking IP, character (M2M), category and physical storage location
-- High‑performance **search & filter APIs** with index‑friendly fields and basic idempotent create logic
-- A tree‑like **storage node model** to describe real‑world spaces (room → cabinet → shelf → drawer)
-- **IP keyword system** for enhanced search experience
-- **Automatic image compression** to optimize storage usage
-- **BGM API integration** for quick IP and character data import
-
-The name **ShiGu** plays on the Chinese words for "eating merch" (吃谷) and "picking up / collecting" (拾谷), emphasizing both the emotional side of collecting and the structured act of organizing your collection.
 
 ---
 
