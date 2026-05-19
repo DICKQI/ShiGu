@@ -75,7 +75,7 @@ class GoodsPagination(PageNumberPagination):
         return Response({
             'count': self.page.paginator.count,  # 总数
             'page': self.page.number,  # 当前页码
-            'page_size': self.page_size,  # 每页数量
+            'page_size': self.page.paginator.per_page,  # 每页数量（使用实际分页器的值，而非类默认值）
             'next': self.get_next_page_number(),  # 下一页页码
             'previous': self.get_previous_page_number(),  # 上一页页码
             'results': data  # 数据列表
