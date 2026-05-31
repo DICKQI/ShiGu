@@ -1,4 +1,4 @@
-# 拾谷 · ShiGu
+# 拾谷 · PickGoods
 
 <div align="center">
 
